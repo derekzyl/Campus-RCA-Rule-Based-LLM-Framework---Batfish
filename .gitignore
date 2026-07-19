@@ -1,0 +1,14 @@
+.venv/
+.venv.pip-backup/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.env
+results/*.json
+data/evidence_cache/*.json
+*.egg-info/
+dist/
+build/
+.DS_Store

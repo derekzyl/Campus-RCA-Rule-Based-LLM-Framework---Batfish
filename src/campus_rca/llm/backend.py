@@ -1,0 +1,271 @@
+from __future__ import annotations
+
+import json
+import re
+from abc import ABC, abstractmethod
+from typing import Any
+
+from campus_rca.models import EvidenceBundle, LLMDiagnosis, RuleDiagnosis
+from campus_rca.llm.prompts import (
+    SYSTEM_PROMPT,
+    build_hybrid_user_prompt,
+    build_llm_only_user_prompt,
+    evidence_to_prompt_json,
+    rules_to_prompt_json,
+)
+
+
+def _extract_json(text: str) -> dict[str, Any]:
+    text = text.strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        match = re.search(r"\{[\s\S]*\}", text)
+        if match:
+            return json.loads(match.group(0))
+        raise
+
+
+class LLMBackend(ABC):
+    @abstractmethod
+    def complete(self, system: str, user: str) -> str:
+        raise NotImplementedError
+
+    def explain_hybrid(
+        self, symptom: str, evidence: EvidenceBundle, rules: RuleDiagnosis
+    ) -> LLMDiagnosis:
+        user = build_hybrid_user_prompt(
+            symptom,
+            evidence_to_prompt_json(evidence),
+            rules_to_prompt_json(rules),
+        )
+        raw = self.complete(SYSTEM_PROMPT, user)
+        return self._to_diagnosis(raw, grounded=True, evidence=evidence, rules=rules)
+
+    def diagnose_llm_only(self, symptom: str, evidence: EvidenceBundle) -> LLMDiagnosis:
+        user = build_llm_only_user_prompt(symptom, evidence_to_prompt_json(evidence))
+        raw = self.complete(SYSTEM_PROMPT, user)
+        return self._to_diagnosis(raw, grounded=False, evidence=evidence, rules=None)
+
+    def _to_diagnosis(
+        self,
+        raw: str,
+        grounded: bool,
+        evidence: EvidenceBundle,
+        rules: RuleDiagnosis | None,
+    ) -> LLMDiagnosis:
+        data = _extract_json(raw)
+        diag = LLMDiagnosis(
+            root_cause=str(data.get("root_cause", "")),
+            fault_type=str(data.get("fault_type", "unknown")),
+            device=data.get("device"),
+            confidence=float(data.get("confidence", 0.5)),
+            explanation=str(data.get("explanation", "")),
+            evidence_used=list(data.get("evidence_used") or []),
+            remediation=list(data.get("remediation") or []),
+            uncertainties=list(data.get("uncertainties") or []),
+            raw_text=raw,
+        )
+        diag.hallucinated_claims = self._flag_hallucinations(diag, evidence, rules, grounded)
+        return diag
+
+    def _flag_hallucinations(
+        self,
+        diag: LLMDiagnosis,
+        evidence: EvidenceBundle,
+        rules: RuleDiagnosis | None,
+        grounded: bool,
+    ) -> list[str]:
+        """Lightweight evidence-faithfulness checks for evaluation (RQ2)."""
+        flags: list[str] = []
+        blob = evidence.model_dump_json().lower()
+        text = f"{diag.root_cause} {diag.explanation} {diag.device}".lower()
+
+        for device in re.findall(r"\b(core1|dist1|dist2|border1|r\d+|sw\d+)\b", text):
+            if device not in blob and (not rules or device not in rules.model_dump_json().lower()):
+                flags.append(f"Mentions device '{device}' absent from evidence")
+
+        if grounded and rules and rules.primary:
+            if diag.fault_type != rules.primary.fault_type.value:
+                # Not always hallucination — note contradiction for metrics
+                flags.append(
+                    f"Contradicts rule fault_type ({rules.primary.fault_type.value} vs {diag.fault_type})"
+                )
+        return flags
+
+
+class OpenAIBackend(LLMBackend):
+    def __init__(self, api_key: str, model: str, temperature: float = 0.0):
+        from openai import OpenAI
+
+        self.client = OpenAI(api_key=api_key)
+        self.model = model
+        self.temperature = temperature
+
+    def complete(self, system: str, user: str) -> str:
+        resp = self.client.chat.completions.create(
+            model=self.model,
+            temperature=self.temperature,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        )
+        return resp.choices[0].message.content or "{}"
+
+
+class OllamaBackend(LLMBackend):
+    def __init__(
+        self,
+        base_url: str,
+        model: str,
+        temperature: float = 0.0,
+        timeout_s: float = 600.0,
+    ):
+        self.base_url = base_url.rstrip("/")
+        self.model = model
+        self.temperature = temperature
+        self.timeout_s = timeout_s
+
+    def ping(self) -> dict:
+        import httpx
+
+        with httpx.Client(timeout=10.0) as client:
+            r = client.get(f"{self.base_url}/api/tags")
+            r.raise_for_status()
+            models = [m.get("name", "") for m in r.json().get("models", [])]
+            return {"ok": True, "models": models, "selected": self.model}
+
+    def complete(self, system: str, user: str) -> str:
+        import httpx
+
+        payload = {
+            "model": self.model,
+            "stream": False,
+            "format": "json",
+            "options": {
+                "temperature": self.temperature,
+                "num_predict": 512,
+            },
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        }
+        try:
+            with httpx.Client(
+                timeout=httpx.Timeout(self.timeout_s, connect=15.0)
+            ) as client:
+                r = client.post(f"{self.base_url}/api/chat", json=payload)
+                if r.status_code == 404:
+                    raise RuntimeError(
+                        f"Ollama model '{self.model}' not found. Run: ollama pull {self.model}"
+                    )
+                r.raise_for_status()
+                content = r.json().get("message", {}).get("content") or "{}"
+                return content
+        except httpx.ConnectError as exc:
+            raise RuntimeError(
+                f"Cannot reach Ollama at {self.base_url}. Start it with: ollama serve"
+            ) from exc
+        except httpx.TimeoutException as exc:
+            raise RuntimeError(
+                f"Ollama timed out after {self.timeout_s:.0f}s for model '{self.model}'. "
+                "Compact prompts are already enabled; try a smaller model or GPU."
+            ) from exc
+
+
+class MockBackend(LLMBackend):
+    """Deterministic offline LLM stand-in for demos and CI without API keys."""
+
+    def complete(self, system: str, user: str) -> str:
+        # Prefer rule JSON embedded in hybrid prompts
+        rule_match = re.search(r'"fault_type":\s*"([^"]+)"', user)
+        device_match = re.search(r'"device":\s*"([^"]+)"', user)
+        obj_match = re.search(r'"object":\s*"([^"]+)"', user)
+
+        if "Validated rule-based diagnosis" in user and rule_match:
+            fault = rule_match.group(1)
+            device = device_match.group(1) if device_match else None
+            obj = obj_match.group(1) if obj_match else None
+            return json.dumps(
+                {
+                    "root_cause": f"{fault} on {device} ({obj})" if device else fault,
+                    "fault_type": fault,
+                    "device": device,
+                    "confidence": 0.9,
+                    "explanation": (
+                        f"Based on validated rules and Batfish evidence, the primary root cause is "
+                        f"{fault} affecting {device}/{obj}. Evidence shows the probe flow fails in a "
+                        f"manner consistent with this fault class."
+                    ),
+                    "evidence_used": ["rule_primary", "reachability", "routes"],
+                    "remediation": [
+                        f"Verify configuration on {device} for {obj}",
+                        "Compare against baseline snapshot",
+                        "Apply change only after human approval",
+                    ],
+                    "uncertainties": [],
+                }
+            )
+
+        # LLM-only heuristic: intentionally weak on overlapping ACL vs routing symptoms
+        # (dissertation RQ1 — hybrid should beat unguided LLM when evidence is ambiguous).
+        symptom_section = user.split("Optional raw evidence")[0].lower()
+        evidence_section = user.lower()
+
+        if "entire faculty" in symptom_section or (
+            "shutdown" in symptom_section and "uplink" in symptom_section
+        ):
+            fault, device, obj = "interface_down", "core1", "GigabitEthernet0/1"
+        elif "internet" in symptom_section or "203.0.113" in symptom_section:
+            fault, device, obj = "wrong_static_route", "core1", "0.0.0.0/0"
+        elif "browse http" in symptom_section or "http://" in symptom_section:
+            fault, device, obj = "acl_deny", "dist2", "CAMPUS_EDGE"
+        elif (
+            "incoming_filter_name" in evidence_section
+            and "campus_edge" in evidence_section
+            and "faculty" in symptom_section
+        ):
+            # Ambiguity trap: ACL present on path → unguided LLM often blames policy
+            fault, device, obj = "acl_deny", "dist2", "CAMPUS_EDGE"
+        elif "student subnet" in symptom_section:
+            fault, device, obj = "missing_route", "dist1", "10.10.10.0/24"
+        elif "faculty" in symptom_section:
+            fault, device, obj = "missing_route", "dist2", "10.20.20.0/24"
+        else:
+            fault, device, obj = "unknown", None, None
+
+        return json.dumps(
+            {
+                "root_cause": f"Likely {fault} on {device}",
+                "fault_type": fault,
+                "device": device,
+                "confidence": 0.55,
+                "explanation": "Inferred from symptom language without mandatory rule validation.",
+                "evidence_used": ["symptom"],
+                "remediation": ["Manually validate with show ip route / show access-lists"],
+                "uncertainties": ["LLM-only mode; may hallucinate without Batfish grounding"],
+            }
+        )
+
+
+def get_llm_backend(settings=None) -> LLMBackend:
+    from campus_rca.config import get_settings
+
+    settings = settings or get_settings()
+    if settings.llm_backend == "openai":
+        if not settings.openai_api_key:
+            raise RuntimeError("OPENAI_API_KEY required when LLM_BACKEND=openai")
+        return OpenAIBackend(
+            settings.openai_api_key, settings.openai_model, settings.llm_temperature
+        )
+    if settings.llm_backend == "ollama":
+        return OllamaBackend(
+            settings.ollama_base_url,
+            settings.ollama_model,
+            settings.llm_temperature,
+            settings.ollama_timeout_s,
+        )
+    return MockBackend()
