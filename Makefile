@@ -1,17 +1,22 @@
-.PHONY: sync demo eval eval-ollama batfish serve ollama check-llm lock
+.PHONY: sync demo eval eval-ollama batfish serve ollama check-llm lock gui run
 
-# Install / refresh the project environment (creates .venv + uv.lock)
 sync:
 	uv sync
 
 lock:
 	uv lock
 
+run:
+	./run.sh
+
+gui:
+	uv run campus-rca-gui
+
 demo:
 	uv run ./scripts/demo.sh
 
 eval:
-	uv run python evaluation/run_eval.py --offline --llm-backend mock --out results
+	uv run python evaluation/run_eval.py --offline --llm-backend ollama --out results
 
 eval-ollama:
 	uv run python evaluation/run_eval.py --offline --llm-backend ollama --out results/ollama

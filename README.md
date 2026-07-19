@@ -34,27 +34,51 @@ Injected faults (ground truth in `ground_truth/scenarios.yaml`):
 | `wrong_static_route` | Bad default next-hop | core1 |
 | `ospf_passive_misconfig` | Faculty prefix not advertised | dist2 |
 
-## Quick start (offline demo — no Docker/API key)
-
-Requires [uv](https://docs.astral.sh/uv/):
+## Quick start (novice — one click)
 
 ```bash
 cd /path/to/sal
-uv sync
-cp -n .env.example .env
-chmod +x scripts/*.sh
-uv run ./scripts/demo.sh
-# or: make sync && make demo
+chmod +x run.sh
+./run.sh
 ```
 
-Step by step:
+This script will:
+
+1. Detect OS / CPU architecture  
+2. Check Python 3.10+ and Tkinter  
+3. Install **uv** if needed and run `uv sync`  
+4. Ensure **Ollama** is running and the model is pulled (real LLM — not mock)  
+5. Optionally start **Batfish** via Docker  
+6. Open the **Tkinter GUI**
+
+Or: `make run`
+
+### GUI tabs
+
+| Tab | What it does |
+|---|---|
+| Setup | System checks, uv sync, start Ollama, pull model |
+| Diagnose | Pick scenario + mode (hybrid / rule_only / llm_only), run RCA, view explanation |
+| Evaluate | Full labelled comparison report (all scenarios × modes) |
+| Results | Browse saved JSON / Markdown reports under `results/` |
+
+Manual GUI only (after setup): `uv run campus-rca-gui`
+
+Requires [uv](https://docs.astral.sh/uv/) and Ollama. On Debian/Parrot/Ubuntu, Tkinter may need:
+
+```bash
+sudo apt install python3-tk
+```
+
+## Quick start (CLI)
 
 ```bash
 uv sync
-export LLM_BACKEND=mock USE_BATFISH=false
+cp -n .env.example .env
+export LLM_BACKEND=ollama USE_BATFISH=false
 uv run campus-rca list-scenarios
 uv run campus-rca diagnose acl_deny_http --mode hybrid --offline
-uv run python evaluation/run_eval.py --offline --llm-backend mock
+uv run python evaluation/run_eval.py --offline --llm-backend ollama
 ```
 
 Reports land in `results/evaluation_report.md`.
@@ -128,13 +152,16 @@ uv run campus-rca serve --host 127.0.0.1 --port 8080
 ## Project layout
 
 ```
+run.sh                        # ONE-CLICK: arch check → setup → Tkinter UI
 configs/baseline|scenarios/   # Batfish snapshots (configs/ + hosts/)
 ground_truth/scenarios.yaml   # labelled faults for scoring
 src/campus_rca/
   batfish_client.py           # evidence collection (+ synthetic fallback)
   rules/engine.py             # deterministic rules R1–R5
-  llm/backend.py              # openai | ollama | mock
+  llm/backend.py              # openai | ollama
   pipeline.py                 # rule_only / llm_only / hybrid
+  gui.py                      # Tkinter UI
+  setup_checks.py             # system / dep readiness
   cli.py  api.py
 evaluation/                   # accuracy, faithfulness, hallucination metrics
 docker-compose.yml            # batfish/allinone
