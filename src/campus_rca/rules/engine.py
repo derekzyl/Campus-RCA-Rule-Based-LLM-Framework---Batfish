@@ -6,6 +6,11 @@ from typing import Any
 from campus_rca.models import EvidenceBundle, FaultType, RuleDiagnosis, RuleHit
 
 
+# Batfish host nodes (hostA/hostB/…) advertise normal LAN default gateways —
+# those must not be treated as campus routing faults.
+ROUTER_NODES = frozenset({"core1", "dist1", "dist2", "border1"})
+
+
 def _s(obj: Any) -> str:
     return str(obj).lower() if obj is not None else ""
 
@@ -15,6 +20,10 @@ def _blob(evidence: EvidenceBundle) -> str:
         evidence.model_dump_json(),
     ]
     return " ".join(parts).lower()
+
+
+def _is_router(node: Any) -> bool:
+    return _s(node) in ROUTER_NODES
 
 
 class RuleEngine:
@@ -124,18 +133,22 @@ class RuleEngine:
     def _rule_wrong_static(self, evidence: EvidenceBundle, blob: str) -> list[RuleHit]:
         hits = []
         for row in evidence.routes:
+            node = row.get("Node")
+            # Host default→gateway routes are normal; only score router misconfigs.
+            if not _is_router(node):
+                continue
             net = _s(row.get("Network"))
             proto = _s(row.get("Protocol"))
             nh = _s(row.get("Next_Hop_IP") or row.get("Next_Hop"))
             if net in {"0.0.0.0/0", "default"} and "static" in proto:
-                # Wrong if next-hop is inside campus student LAN
+                # Wrong if next-hop is inside campus student/faculty LAN
                 if nh.startswith("10.10.10.") or nh.startswith("10.20.20."):
                     hits.append(
                         RuleHit(
                             rule_id="R3_WRONG_STATIC",
                             fault_type=FaultType.WRONG_STATIC_ROUTE,
                             confidence=0.93,
-                            device=str(row.get("Node")),
+                            device=str(node),
                             object=str(row.get("Network")),
                             layer="routing",
                             rationale=(
@@ -254,20 +267,30 @@ class RuleEngine:
         return hits
 
     def _rule_reachability_ok(self, evidence: EvidenceBundle, blob: str) -> list[RuleHit]:
-        if any("accepted" in _s(r) or "reachable" == _s(r.get("Result")) for r in evidence.reachability):
-            if "unreachable" not in blob and "denied" not in blob and "no_route" not in blob:
-                return [
-                    RuleHit(
-                        rule_id="R0_OK",
-                        fault_type=FaultType.REACHABILITY_OK,
-                        confidence=0.85,
-                        device=None,
-                        object=None,
-                        layer="dataplane",
-                        rationale="Probe flow is reachable under current snapshot.",
-                        evidence_refs=["reachability"],
-                    )
-                ]
+        # Never claim OK if ACL/filter deny or drop/no-route signals are present.
+        if any(_s(r.get("Action")) in {"deny", "denied"} for r in evidence.acl_trace):
+            return []
+        if any(
+            tok in blob
+            for tok in ("denied_in", "denied_out", "unreachable", "no_route", "null_routed")
+        ):
+            return []
+        if any(
+            "accepted" in _s(r) or _s(r.get("Result")) == "reachable"
+            for r in evidence.reachability
+        ):
+            return [
+                RuleHit(
+                    rule_id="R0_OK",
+                    fault_type=FaultType.REACHABILITY_OK,
+                    confidence=0.85,
+                    device=None,
+                    object=None,
+                    layer="dataplane",
+                    rationale="Probe flow is reachable under current snapshot.",
+                    evidence_refs=["reachability"],
+                )
+            ]
         return []
 
     @staticmethod

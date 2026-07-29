@@ -149,7 +149,10 @@ def gather_setup_report() -> SetupReport:
                 model = line.split("=", 1)[1].strip().strip("'\"")
                 break
     model = model or "llama3.2:3b"
-    detail = f"cli={'yes' if ollama_bin else 'no'}, api={'up' if ollama_up else 'down'}, model={model}"
+    detail = (
+        f"cli={'yes' if ollama_bin else 'no'}, api={'up' if ollama_up else 'down'}, "
+        f"preferred={model or '?'}, local=[{', '.join(list_ollama_models()[:5])}]"
+    )
     report.checks.append(
         CheckItem(
             "Ollama",
@@ -159,15 +162,22 @@ def gather_setup_report() -> SetupReport:
         )
     )
 
-    # Batfish / Docker
+    # Batfish / Docker / Podman
     docker = shutil.which("docker")
+    podman = shutil.which("podman")
     bf = _port_open("127.0.0.1", 9996) or _port_open("127.0.0.1", 9997)
+    uid = os.getuid() if hasattr(os, "getuid") else 0
+    sock = Path(f"/run/user/{uid}/podman/podman.sock")
+    detail = (
+        f"docker={'yes' if docker else 'no'}, podman={'yes' if podman else 'no'}, "
+        f"podman_sock={'yes' if sock.exists() else 'no'}, service={'up' if bf else 'down'}"
+    )
     report.checks.append(
         CheckItem(
             "Batfish",
             bf,
-            f"docker={'yes' if docker else 'no'}, service={'up' if bf else 'down'}",
-            "docker compose up -d   (optional; offline evidence used if down)",
+            detail,
+            "Click Start Batfish in GUI, or: systemctl --user enable --now podman.socket && ./scripts/ensure_batfish.sh",
         )
     )
 
@@ -201,8 +211,84 @@ def start_ollama_serve() -> tuple[bool, str]:
     return False, "timeout waiting for ollama"
 
 
-def pull_ollama_model(model: str) -> tuple[bool, str]:
+def list_ollama_models(base_url: str = "http://localhost:11434") -> list[str]:
+    """Return locally installed Ollama model names (never pulls)."""
+    names: list[str] = []
+    # Prefer CLI (works even if API format differs)
+    if shutil.which("ollama"):
+        code, out = _run(["ollama", "list"], timeout=30)
+        if code == 0 and out:
+            for line in out.splitlines()[1:]:
+                parts = line.split()
+                if parts:
+                    names.append(parts[0])
+    if names:
+        return names
+    # Fallback: HTTP tags API
+    try:
+        import json
+        import urllib.request
+
+        with urllib.request.urlopen(f"{base_url.rstrip('/')}/api/tags", timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+        for m in data.get("models") or []:
+            name = m.get("name") or m.get("model")
+            if name:
+                names.append(name)
+    except Exception:  # noqa: BLE001
+        pass
+    return names
+
+
+def model_is_local(model: str, local_models: list[str] | None = None) -> bool:
+    """True if model is already on disk (exact or tag/family match)."""
+    return resolve_local_model_name(model, local_models) is not None
+
+
+def resolve_local_model_name(model: str, local_models: list[str] | None = None) -> str | None:
+    """Return the concrete local tag to use for `model`, or None if missing."""
+    models = local_models if local_models is not None else list_ollama_models()
+    model = model.strip()
+    for m in models:
+        if m == model:
+            return m
+    for m in models:
+        if m.startswith(model + ":"):
+            return m
+    if ":" not in model:
+        for m in models:
+            if m.split(":")[0] == model:
+                return m
+    return None
+
+
+def set_env_ollama_model(model: str, env_path: Path | None = None) -> None:
+    path = env_path or (ROOT / ".env")
+    model = model.strip()
+    if not path.exists():
+        path.write_text(f"OLLAMA_MODEL={model}\n", encoding="utf-8")
+        return
+    lines = path.read_text(encoding="utf-8").splitlines()
+    found = False
+    out: list[str] = []
+    for line in lines:
+        if line.startswith("OLLAMA_MODEL="):
+            out.append(f"OLLAMA_MODEL={model}")
+            found = True
+        else:
+            out.append(line)
+    if not found:
+        out.append(f"OLLAMA_MODEL={model}")
+    path.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+
+def pull_ollama_model(model: str, *, force: bool = False) -> tuple[bool, str]:
+    """Pull only if missing locally (unless force=True)."""
     if not shutil.which("ollama"):
         return False, "ollama not installed"
+    local = list_ollama_models()
+    concrete = resolve_local_model_name(model, local)
+    if concrete and not force:
+        return True, f"already local — skipped download ({concrete})"
     code, out = _run(["ollama", "pull", model], timeout=3600)
     return code == 0, out[-2000:] if out else "ok"

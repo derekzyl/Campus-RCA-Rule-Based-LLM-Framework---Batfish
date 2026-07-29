@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Start Ollama (if needed) and ensure the Campus RCA model is available.
+# Start Ollama (if needed) and let the user pick a local model (no re-download).
 set -euo pipefail
 
-MODEL="${OLLAMA_MODEL:-llama3.2:3b}"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BASE="${OLLAMA_BASE_URL:-http://localhost:11434}"
 
 if ! command -v ollama >/dev/null 2>&1; then
@@ -27,15 +27,11 @@ if ! curl -sf "${BASE}/api/tags" >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx "${MODEL}" \
-  && ! ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -q "^${MODEL}:"; then
-  echo "==> Pulling ${MODEL} (this can take several minutes)"
-  ollama pull "${MODEL}"
-else
-  echo "==> Model ${MODEL} already present"
-fi
+# shellcheck disable=SC1091
+source "$ROOT/scripts/select_ollama_model.sh"
+MODEL="${SELECTED_OLLAMA_MODEL}"
 
-echo "==> Smoke test JSON response"
+echo "==> Smoke test JSON response (${MODEL})"
 curl -sf "${BASE}/api/chat" -d "$(cat <<EOF
 {
   "model": "${MODEL}",
@@ -51,5 +47,5 @@ EOF
 )" | python3 -c "import sys,json; print(json.load(sys.stdin)['message']['content'][:200])"
 
 echo
-echo "Ready. Set LLM_BACKEND=ollama OLLAMA_MODEL=${MODEL} then:"
-echo "  campus-rca diagnose acl_deny_http --mode hybrid --offline"
+echo "Ready. LLM_BACKEND=ollama OLLAMA_MODEL=${MODEL}"
+echo "  uv run campus-rca diagnose acl_deny_http --mode hybrid --offline"

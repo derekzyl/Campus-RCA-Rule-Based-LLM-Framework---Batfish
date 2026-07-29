@@ -16,14 +16,80 @@ from campus_rca.llm.prompts import (
 
 
 def _extract_json(text: str) -> dict[str, Any]:
-    text = text.strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{[\s\S]*\}", text)
-        if match:
-            return json.loads(match.group(0))
-        raise
+    """Parse model JSON; tolerate fences, trailing commas, and truncated objects."""
+    text = (text or "").strip()
+    if not text:
+        raise json.JSONDecodeError("Empty response", text, 0)
+
+    # Strip markdown fences if present
+    fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text, re.IGNORECASE)
+    if fence:
+        text = fence.group(1).strip()
+
+    candidates = [text]
+    match = re.search(r"\{[\s\S]*\}", text)
+    if match:
+        candidates.append(match.group(0))
+
+    last_err: Exception | None = None
+    for cand in candidates:
+        for attempt in (cand, re.sub(r",\s*([}\]])", r"\1", cand)):
+            try:
+                data = json.loads(attempt)
+                if isinstance(data, dict):
+                    return data
+            except json.JSONDecodeError as exc:
+                last_err = exc
+
+        # Truncated JSON: close open braces/brackets and retry
+        repaired = re.sub(r",\s*([}\]])", r"\1", cand)
+        # Drop a dangling incomplete key/value at the end
+        repaired = re.sub(r",\s*\"[^\"]*\"?\s*:?\s*\"?[^\"]*$", "", repaired)
+        repaired = re.sub(r",\s*$", "", repaired)
+        open_curly = repaired.count("{") - repaired.count("}")
+        open_square = repaired.count("[") - repaired.count("]")
+        if open_curly > 0 or open_square > 0:
+            repaired = repaired + ("]" * max(0, open_square)) + ("}" * max(0, open_curly))
+            try:
+                data = json.loads(repaired)
+                if isinstance(data, dict):
+                    return data
+            except json.JSONDecodeError as exc:
+                last_err = exc
+
+    if last_err:
+        raise last_err
+    raise json.JSONDecodeError("No JSON object found", text, 0)
+
+
+def _fallback_diagnosis(raw: str, rules: RuleDiagnosis | None) -> LLMDiagnosis:
+    """When the model returns unparseable JSON, keep the run alive."""
+    if rules and rules.primary:
+        p = rules.primary
+        return LLMDiagnosis(
+            root_cause=f"{p.fault_type.value} on {p.device}",
+            fault_type=p.fault_type.value,
+            device=p.device,
+            confidence=float(p.confidence),
+            explanation=p.rationale,
+            evidence_used=list(p.evidence_refs),
+            remediation=[f"Inspect {p.device}:{p.object}"],
+            uncertainties=["LLM JSON parse failed — using rule diagnosis"],
+            raw_text=raw,
+            hallucinated_claims=["LLM response was not valid JSON"],
+        )
+    return LLMDiagnosis(
+        root_cause="LLM response unparseable",
+        fault_type="unknown",
+        device=None,
+        confidence=0.0,
+        explanation="Model returned invalid JSON; no rule diagnosis available.",
+        evidence_used=[],
+        remediation=[],
+        uncertainties=["LLM JSON parse failed"],
+        raw_text=raw,
+        hallucinated_claims=["LLM response was not valid JSON"],
+    )
 
 
 class LLMBackend(ABC):
@@ -54,12 +120,31 @@ class LLMBackend(ABC):
         evidence: EvidenceBundle,
         rules: RuleDiagnosis | None,
     ) -> LLMDiagnosis:
-        data = _extract_json(raw)
+        try:
+            data = _extract_json(raw)
+        except (json.JSONDecodeError, ValueError, TypeError):
+            return _fallback_diagnosis(raw, rules)
+
+        device = data.get("device")
+        if isinstance(device, str) and device.strip().lower() in {
+            "null",
+            "none",
+            "hostname or null",
+            "hostname",
+            "n/a",
+        }:
+            device = None
+
+        fault = str(data.get("fault_type", "unknown")).strip().lower()
+        # Models sometimes echo the whole enum string
+        if "|" in fault:
+            fault = "unknown"
+
         diag = LLMDiagnosis(
             root_cause=str(data.get("root_cause", "")),
-            fault_type=str(data.get("fault_type", "unknown")),
-            device=data.get("device"),
-            confidence=float(data.get("confidence", 0.5)),
+            fault_type=fault,
+            device=device,
+            confidence=float(data.get("confidence", 0.5) or 0.5),
             explanation=str(data.get("explanation", "")),
             evidence_used=list(data.get("evidence_used") or []),
             remediation=list(data.get("remediation") or []),
@@ -139,6 +224,7 @@ class OllamaBackend(LLMBackend):
 
     def complete(self, system: str, user: str) -> str:
         import httpx
+        import os
 
         payload = {
             "model": self.model,
@@ -146,7 +232,8 @@ class OllamaBackend(LLMBackend):
             "format": "json",
             "options": {
                 "temperature": self.temperature,
-                "num_predict": 512,
+                # Keep CPU inference bounded; can be overridden via OLLAMA_NUM_PREDICT env.
+                "num_predict": int(os.environ.get("OLLAMA_NUM_PREDICT", "256")),
             },
             "messages": [
                 {"role": "system", "content": system},

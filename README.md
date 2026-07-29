@@ -48,8 +48,21 @@ This script will:
 2. Check Python 3.10+ and Tkinter  
 3. Install **uv** if needed and run `uv sync`  
 4. Ensure **Ollama** is running and the model is pulled (real LLM — not mock)  
-5. Optionally start **Batfish** via Docker  
+5. Try to start **Batfish** via rootless Podman or Docker; if unavailable, use offline evidence  
 6. Open the **Tkinter GUI**
+
+Skip containers entirely:
+
+```bash
+./run.sh --skip-batfish
+```
+
+On Parrot/Fedora (docker → podman shim), Batfish setup runs:
+
+```bash
+systemctl --user enable --now podman.socket
+./scripts/ensure_batfish.sh
+```
 
 Or: `make run`
 
@@ -117,7 +130,7 @@ Set in `.env` or environment:
 
 ```bash
 # Install from https://ollama.com/download if needed, then:
-./scripts/setup_ollama.sh          # starts server + pulls OLLAMA_MODEL
+./scripts/setup_ollama.sh          # starts server + lets you pick a LOCAL model
 # or: make ollama
 
 uv run campus-rca check-llm
@@ -125,13 +138,9 @@ uv run campus-rca diagnose acl_deny_http --mode hybrid --offline
 uv run python evaluation/run_eval.py --offline --llm-backend ollama --out results/ollama
 ```
 
-Current `.env` uses `LLM_BACKEND=ollama` with `OLLAMA_MODEL=llama3.2:3b` (fast interim).  
-For dissertation runs after the larger model finishes downloading:
+**Local models are reused** — if Ollama already has a model downloaded, the launcher/GUI lists it and will not re-download. You are asked which local model to use, or you can type a different name (download only if missing).
 
-```bash
-ollama pull llama3.1
-# then set OLLAMA_MODEL=llama3.1 in .env
-```
+In the GUI: **Choose Ollama model…** on the Setup tab (also prompted at startup when locals exist).
 
 Notes:
 - Evidence sent to the LLM is **compacted** (routes/ACL/traceroute slices) so local CPU models stay usable.

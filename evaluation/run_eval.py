@@ -41,10 +41,32 @@ def main() -> None:
     for scenario in data["scenarios"]:
         gt = scenario["ground_truth"]
         for mode in args.modes:
-            result = pipe.run_scenario(scenario, mode=mode)
-            rows.append(score_row(result, gt))
-            status = "OK" if rows[-1]["localisation_correct"] else "MISS"
-            print(f"[{status}] {mode:10} {scenario['id']:24} -> {result.final_fault_type}@{result.final_device}")
+            try:
+                result = pipe.run_scenario(scenario, mode=mode)
+                rows.append(score_row(result, gt))
+                status = "OK" if rows[-1]["localisation_correct"] else "MISS"
+                print(
+                    f"[{status}] {mode:10} {scenario['id']:24} "
+                    f"-> {result.final_fault_type}@{result.final_device}"
+                )
+            except Exception as exc:  # noqa: BLE001
+                rows.append(
+                    {
+                        "scenario_id": scenario["id"],
+                        "mode": mode,
+                        "predicted_fault": "error",
+                        "predicted_device": None,
+                        "truth_fault": gt["fault_type"],
+                        "truth_device": gt.get("device"),
+                        "localisation_correct": False,
+                        "keyword_coverage": 0.0,
+                        "hallucination_rate": 1.0,
+                        "evidence_faithfulness": 0.0,
+                        "elapsed_ms": 0.0,
+                        "explanation": str(exc),
+                    }
+                )
+                print(f"[ERR] {mode:10} {scenario['id']:24} -> {exc}")
 
     path = write_report(rows, args.out)
     print(f"\nWrote {path}")

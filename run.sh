@@ -15,15 +15,18 @@ for arg in "$@"; do
     --setup-only) SETUP_ONLY=1 ;;
     --cli) MODE="cli" ;;
     --gui) MODE="gui" ;;
+    --skip-batfish) export SKIP_BATFISH=1 ;;
     -h|--help)
       cat <<'EOF'
 Campus RCA launcher (masters prototype)
 
-  ./run.sh              Detect arch, install deps, ensure Ollama, open Tkinter UI
-  ./run.sh --setup-only Setup only (no UI)
-  ./run.sh --cli        Setup then interactive CLI diagnose hint
+  ./run.sh                 Detect arch, install deps, ensure Ollama, open Tkinter UI
+  ./run.sh --setup-only    Setup only (no UI)
+  ./run.sh --cli           Setup then show CLI hints
+  ./run.sh --skip-batfish  Do not start Docker/Podman; use offline evidence
 
-Requires: Python 3.10+, network for first uv sync / Ollama model pull.
+Batfish: tries to start rootless Podman or Docker automatically.
+If that fails, the app still runs with offline/cached network evidence + Ollama.
 EOF
       exit 0
       ;;
@@ -156,53 +159,45 @@ if ! curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; then
 fi
 curl -sf http://localhost:11434/api/tags >/dev/null 2>&1 || fail "Cannot reach Ollama at http://localhost:11434"
 
-if ! ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -Eq "^${OLLAMA_MODEL}$|^${OLLAMA_MODEL}:"; then
-  log "Pulling model ${OLLAMA_MODEL} (first time can take a while)"
-  ollama pull "${OLLAMA_MODEL}"
-fi
-ok "Model ready: ${OLLAMA_MODEL}"
+log "Choosing Ollama model (local copies are reused — no re-download)"
+# Always prompt when a TTY is available and at least one model exists
+# shellcheck disable=SC1091
+source "$ROOT/scripts/select_ollama_model.sh"
+OLLAMA_MODEL="${SELECTED_OLLAMA_MODEL:-$OLLAMA_MODEL}"
+ok "Model ready (local): ${OLLAMA_MODEL}"
 
 # ---------------------------------------------------------------------------
-# 6) Optional Batfish via Docker
+# 6) Optional Batfish (try Podman/Docker, else offline — OK for demos)
 # ---------------------------------------------------------------------------
-log "Checking Batfish (optional Docker)"
+log "Checking Batfish (optional container; offline fallback is fine)"
 USE_BF=0
-if command -v docker >/dev/null 2>&1; then
-  if docker info >/dev/null 2>&1; then
-    ok "Docker available"
-    if ! curl -sf http://localhost:9996/ >/dev/null 2>&1; then
-      warn "Starting Batfish (docker compose) — first pull may be large"
-      if docker compose up -d; then
-        sleep 8
-        USE_BF=1
-      else
-        warn "Could not start Batfish; GUI can still use offline evidence cache"
-      fi
-    else
-      ok "Batfish already reachable"
-      USE_BF=1
-    fi
-  else
-    warn "Docker installed but daemon not running — offline evidence mode"
-  fi
-else
-  warn "Docker not found — offline/synthetic Batfish evidence will be used"
+# Export rootless Podman socket early if present (Parrot docker→podman shim)
+if [[ -S "/run/user/$(id -u)/podman/podman.sock" ]]; then
+  export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
 fi
+
+if [[ "${SKIP_BATFISH:-0}" == "1" ]]; then
+  warn "SKIP_BATFISH=1 — skipping container setup (offline evidence)"
+elif bash "$ROOT/scripts/ensure_batfish.sh"; then
+  USE_BF=1
+else
+  warn "Continuing without live Batfish — rule engine uses offline/cached evidence"
+fi
+
+set_env_use_batfish() {
+  local val="$1"
+  if [[ "$OS" == "Darwin" ]]; then
+    grep -q '^USE_BATFISH=' .env 2>/dev/null && sed -i '' "s/^USE_BATFISH=.*/USE_BATFISH=${val}/" .env || echo "USE_BATFISH=${val}" >> .env
+  else
+    grep -q '^USE_BATFISH=' .env 2>/dev/null && sed -i "s/^USE_BATFISH=.*/USE_BATFISH=${val}/" .env || echo "USE_BATFISH=${val}" >> .env
+  fi
+}
 
 if [[ "$USE_BF" == "1" ]]; then
-  if [[ "$OS" == "Darwin" ]]; then
-    sed -i '' 's/^USE_BATFISH=.*/USE_BATFISH=true/' .env || true
-  else
-    sed -i 's/^USE_BATFISH=.*/USE_BATFISH=true/' .env || true
-  fi
+  set_env_use_batfish true
 else
-  if [[ "$OS" == "Darwin" ]]; then
-    sed -i '' 's/^USE_BATFISH=.*/USE_BATFISH=false/' .env || true
-  else
-    sed -i 's/^USE_BATFISH=.*/USE_BATFISH=false/' .env || true
-  fi
+  set_env_use_batfish false
 fi
-
 # ---------------------------------------------------------------------------
 # 7) Launch
 # ---------------------------------------------------------------------------

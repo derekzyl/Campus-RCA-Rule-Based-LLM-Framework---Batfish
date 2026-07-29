@@ -5,46 +5,55 @@ from typing import Any
 
 from campus_rca.models import EvidenceBundle, RuleDiagnosis
 
-SYSTEM_PROMPT = """You are a campus network root-cause analysis assistant.
-You MUST ground every claim in the provided evidence.
-You MUST NOT invent devices, ACLs, routes, or traceroute hops that are absent from the evidence.
-If evidence is incomplete, state uncertainty explicitly.
-Temperature is fixed at 0 for reproducibility.
-Respond ONLY with valid JSON matching this schema:
-{
-  "root_cause": "one sentence",
-  "fault_type": "acl_deny|missing_route|interface_down|wrong_static_route|ospf_neighbor|unknown",
-  "device": "hostname or null",
-  "confidence": 0.0-1.0,
-  "explanation": "operator-readable explanation tied to evidence",
-  "evidence_used": ["short refs"],
-  "remediation": ["read-only recommended checks/fixes — do not claim changes were applied"],
-  "uncertainties": ["optional"]
-}
-"""
+SYSTEM_PROMPT = """Network RCA assistant. Respond ONLY with valid compact JSON:
+{"root_cause":"one sentence","fault_type":"acl_deny","device":"dist2","confidence":0.9,"explanation":"2-3 sentences","evidence_used":["routes"],"remediation":["step"],"uncertainties":[]}
+fault_type must be exactly one of: acl_deny, missing_route, interface_down, wrong_static_route, ospf_neighbor, unknown.
+device must be a real hostname from evidence (e.g. core1, dist1, dist2, border1) or JSON null.
+Ground claims in evidence only. Do not invent devices or routes."""
 
 
-def compact_evidence(evidence: EvidenceBundle, max_routes: int = 12) -> dict[str, Any]:
-    """Shrink Batfish evidence for local LLM context windows / CPU latency."""
+def compact_evidence(evidence: EvidenceBundle, max_routes: int = 6) -> dict[str, Any]:
+    """Aggressively shrink Batfish evidence for CPU-bound local LLMs."""
+    routers = {"core1", "dist1", "dist2", "border1"}
     interesting = [
         i
         for i in evidence.interfaces
-        if i.get("Active") is False
-        or i.get("Admin_Up") is False
-        or i.get("Incoming_Filter_Name")
-        or i.get("Outgoing_Filter_Name")
-    ][:8]
+        if (
+            (isinstance(i.get("Interface"), dict) and i["Interface"].get("hostname") in routers)
+            or True
+        )
+        and (
+            i.get("Active") is False
+            or i.get("Admin_Up") is False
+            or i.get("Incoming_Filter_Name")
+            or i.get("Outgoing_Filter_Name")
+        )
+    ][:4]
+    # Prefer router routes; skip host default-gateway noise
+    router_routes = [r for r in evidence.routes if str(r.get("Node", "")).lower() in routers]
+    routes = (router_routes or evidence.routes)[:max_routes]
     return {
-        "scenario_id": evidence.scenario_id,
-        "source": evidence.source,
         "symptom": evidence.symptom,
-        "probe": evidence.probe.model_dump(),
-        "reachability": evidence.reachability[:5],
-        "traceroute": evidence.traceroute[:5],
-        "acl_trace": evidence.acl_trace[:8],
-        "routes": evidence.routes[:max_routes],
-        "interfaces": interesting or evidence.interfaces[:6],
-        "init_issues": evidence.init_issues[:5],
+        "probe": f"{evidence.probe.src_ip}->{evidence.probe.dst_ip}:{evidence.probe.dst_port or '*'}/{evidence.probe.ip_protocol}",
+        "reachability": [
+            {k: v for k, v in r.items() if k in ("Result", "Disposition", "Flow")}
+            for r in evidence.reachability[:3]
+        ],
+        "traceroute": [
+            {k: v for k, v in r.items() if k in ("Flow", "Traces")}
+            for r in evidence.traceroute[:2]
+        ],
+        "acl_trace": [
+            {k: v for k, v in r.items() if k in ("Node", "Filter_Name", "Action", "Flow")}
+            for r in evidence.acl_trace[:4]
+        ],
+        "routes": routes,
+        "interfaces": interesting or [
+            i
+            for i in evidence.interfaces
+            if isinstance(i.get("Interface"), dict)
+            and i["Interface"].get("hostname") in routers
+        ][:3],
     }
 
 
@@ -56,33 +65,16 @@ def compact_rules(rules: RuleDiagnosis) -> dict[str, Any]:
 
 
 def build_hybrid_user_prompt(symptom: str, evidence_json: str, rule_json: str) -> str:
-    return f"""Incident symptom:
-{symptom}
-
-Validated rule-based diagnosis (authoritative for fault classification):
-{rule_json}
-
-Batfish-derived evidence (authoritative facts; do not contradict):
-{evidence_json}
-
-Task:
-1) Explain the rule diagnosis in clear operator language.
-2) Rank likely causes if multiple rule candidates exist, but do not invent new root causes outside the evidence.
-3) Provide practical remediation steps that a human administrator must approve.
-Return JSON only.
-"""
+    return f"""Symptom: {symptom}
+Rule diagnosis: {rule_json}
+Evidence: {evidence_json}
+Explain the diagnosis briefly. JSON only."""
 
 
 def build_llm_only_user_prompt(symptom: str, evidence_json: str) -> str:
-    return f"""Incident symptom:
-{symptom}
-
-Optional raw evidence (may be incomplete or noisy):
-{evidence_json}
-
-Task: Infer the most likely root cause for this campus routing/ACL failure.
-Return JSON only. Prefer concrete device/object names when present in evidence.
-"""
+    return f"""Symptom: {symptom}
+Evidence: {evidence_json}
+Identify root cause. JSON only."""
 
 
 def evidence_to_prompt_json(evidence: EvidenceBundle) -> str:
