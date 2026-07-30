@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import threading
 import time
 import tkinter as tk
+import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 from typing import Any, Callable, Optional
@@ -247,7 +250,17 @@ class CampusRCAGUI(tk.Tk):
         top = ttk.Frame(self.tab_results)
         top.pack(fill="x")
         self._btn(top, "Refresh list", self.refresh_results, side="left", padx=(0, 6))
-        self._btn(top, "Open selected", self.open_selected_result, side="left")
+        self._btn(top, "Open selected", self.open_selected_result, side="left", padx=(0, 6))
+        self._btn(top, "Generate figures", self.generate_figures, side="left", padx=(0, 6))
+        self._btn(top, "Open figures folder", self.open_figures_folder, side="left")
+        ttk.Label(
+            self.tab_results,
+            text=(
+                "Select an evaluation_report.json then click Generate figures "
+                "(CSV + LaTeX tables + PNG charts for Chapter 5)."
+            ),
+            wraplength=760,
+        ).pack(anchor="w", pady=(6, 0))
 
         self.results_list = tk.Listbox(self.tab_results, height=8)
         self.results_list.pack(fill="x", pady=6)
@@ -831,11 +844,17 @@ class CampusRCAGUI(tk.Tk):
                         self.eval_out.see("end")
 
                     self.after(0, _append)
-            progress("Writing evaluation report…")
+            progress("Writing evaluation report + figures…")
             out_dir = ROOT / "results" / "gui_eval"
             path = write_report(rows, out_dir)
             md = (out_dir / "evaluation_report.md").read_text()
-            return "\n".join(lines) + "\n\n" + md, str(path)
+            figs = sorted((out_dir / "figures").glob("*.png")) if (out_dir / "figures").exists() else []
+            fig_note = (
+                f"\n\nAlso wrote {len(figs)} chart(s) under {out_dir / 'figures'}"
+                if figs
+                else "\n\n(No charts — run Generate figures on Results tab if needed)"
+            )
+            return "\n".join(lines) + "\n\n" + md + fig_note, str(path)
 
         def done(res):
             text, path = res
@@ -845,7 +864,12 @@ class CampusRCAGUI(tk.Tk):
             self.activity_var.set("Evaluation complete")
             self.phase_var.set(path)
             self.refresh_results()
-            messagebox.showinfo("Evaluation complete", f"Report saved:\n{path}")
+            messagebox.showinfo(
+                "Evaluation complete",
+                f"Report saved:\n{path}\n\n"
+                "Tables/charts are under results/gui_eval/ "
+                "(or use Results → Generate figures).",
+            )
 
         self._worker(work, done, task="Full evaluation")
 
@@ -855,8 +879,11 @@ class CampusRCAGUI(tk.Tk):
         results = ROOT / "results"
         if not results.exists():
             return
-        files = sorted(results.rglob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-        files += sorted(results.rglob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+        patterns = ("*.json", "*.md", "*.csv", "*.tex", "*.png")
+        files: list[Path] = []
+        for pat in patterns:
+            files.extend(results.rglob(pat))
+        files = sorted(files, key=lambda p: p.stat().st_mtime, reverse=True)
         seen = set()
         for f in files:
             rel = str(f.relative_to(ROOT))
@@ -865,6 +892,94 @@ class CampusRCAGUI(tk.Tk):
             seen.add(rel)
             self.results_list.insert("end", rel)
 
+    def _selected_eval_report(self) -> Path | None:
+        sel = self.results_list.curselection()
+        if sel:
+            path = ROOT / self.results_list.get(sel[0])
+            if path.name == "evaluation_report.json" and path.exists():
+                return path
+            if path.suffix == ".json" and "evaluation_report" in path.name and path.exists():
+                return path
+        # Fallbacks commonly used by CLI / GUI
+        for candidate in (
+            ROOT / "results" / "evaluation_report.json",
+            ROOT / "results" / "gui_eval" / "evaluation_report.json",
+        ):
+            if candidate.exists():
+                return candidate
+        return None
+
+    def generate_figures(self) -> None:
+        report = self._selected_eval_report()
+        if report is None:
+            messagebox.showwarning(
+                "Generate figures",
+                "No evaluation_report.json found.\n"
+                "Run Evaluate first, or select an evaluation_report.json in the list.",
+            )
+            return
+
+        def work(progress):
+            import sys
+
+            sys.path.insert(0, str(ROOT))
+            from evaluation.plot_results import export_all
+
+            progress(f"Generating tables/charts from {report.relative_to(ROOT)}…")
+            result = export_all(report, report.parent)
+            lines = [
+                f"Source: {report}",
+                f"Output dir: {result['out_dir']}",
+                "",
+                "Tables:",
+            ]
+            for p in result["tables"].values():
+                lines.append(f"  - {p}")
+            lines.append("Figures:")
+            for p in result["figures"]:
+                lines.append(f"  - {p}")
+            return "\n".join(lines), str(result["out_dir"] / "figures")
+
+        def done(res):
+            text, fig_dir = res
+            self.results_view.delete("1.0", "end")
+            self.results_view.insert("1.0", text)
+            self.refresh_results()
+            self.set_status(f"Figures written to {fig_dir}")
+            self.activity_var.set("Figures ready")
+            messagebox.showinfo("Figures generated", f"Charts saved under:\n{fig_dir}")
+
+        self._worker(work, done, task="Generate figures")
+
+    def open_figures_folder(self) -> None:
+        report = self._selected_eval_report()
+        candidates = []
+        if report is not None:
+            candidates.append(report.parent / "figures")
+        candidates.extend(
+            [
+                ROOT / "results" / "figures",
+                ROOT / "results" / "gui_eval" / "figures",
+            ]
+        )
+        for folder in candidates:
+            if folder.exists():
+                try:
+                    if sys.platform.startswith("linux"):
+                        subprocess.Popen(["xdg-open", str(folder)])
+                    elif sys.platform == "darwin":
+                        subprocess.Popen(["open", str(folder)])
+                    else:
+                        webbrowser.open(folder.as_uri())
+                except Exception:  # noqa: BLE001
+                    webbrowser.open(folder.as_uri())
+                self.set_status(f"Opened {folder}")
+                return
+        messagebox.showinfo(
+            "Figures folder",
+            "No figures folder yet.\nSelect an evaluation_report.json and click Generate figures.",
+        )
+
     def open_selected_result(self) -> None:
         sel = self.results_list.curselection()
         if not sel:
@@ -872,6 +987,18 @@ class CampusRCAGUI(tk.Tk):
             return
         rel = self.results_list.get(sel[0])
         path = ROOT / rel
+        if path.suffix.lower() == ".png":
+            try:
+                if sys.platform.startswith("linux"):
+                    subprocess.Popen(["xdg-open", str(path)])
+                elif sys.platform == "darwin":
+                    subprocess.Popen(["open", str(path)])
+                else:
+                    webbrowser.open(path.as_uri())
+            except Exception:  # noqa: BLE001
+                webbrowser.open(path.as_uri())
+            self.set_status(f"Opened image {rel}")
+            return
         text = path.read_text(encoding="utf-8", errors="replace")
         if path.suffix == ".json":
             try:

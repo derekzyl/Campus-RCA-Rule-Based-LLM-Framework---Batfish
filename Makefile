@@ -1,4 +1,4 @@
-.PHONY: sync demo eval eval-ollama batfish serve ollama check-llm lock gui run
+.PHONY: sync demo eval eval-ollama figures batfish serve ollama check-llm lock gui run
 
 sync:
 	uv sync
@@ -20,6 +20,9 @@ eval:
 
 eval-ollama:
 	uv run python evaluation/run_eval.py --offline --llm-backend ollama --out results/ollama
+
+figures:
+	uv run python evaluation/plot_results.py --report results/evaluation_report.json --out results
 
 check-llm:
 	uv run campus-rca check-llm

@@ -73,7 +73,7 @@ Or: `make run`
 | Setup | System checks, uv sync, start Ollama, pull model |
 | Diagnose | Pick scenario + mode (hybrid / rule_only / llm_only), run RCA, view explanation |
 | Evaluate | Full labelled comparison report (all scenarios × modes) |
-| Results | Browse saved JSON / Markdown reports under `results/` |
+| Results | Browse reports; **Generate figures** (CSV/LaTeX/PNG); open charts |
 
 Manual GUI only (after setup): `uv run campus-rca-gui`
 
@@ -94,7 +94,20 @@ uv run campus-rca diagnose acl_deny_http --mode hybrid --offline
 uv run python evaluation/run_eval.py --offline --llm-backend ollama
 ```
 
-Reports land in `results/evaluation_report.md`.
+Reports land in `results/evaluation_report.md` and `results/evaluation_report.json`.
+
+Generate dissertation tables/charts from a report:
+
+```bash
+make figures
+# or:
+uv run python evaluation/plot_results.py --report results/evaluation_report.json
+```
+
+Outputs:
+- `results/evaluation_summary.csv` / `evaluation_rows.csv` — Excel/Sheets
+- `results/evaluation_tables.tex` — LaTeX tables for Chapter 5
+- `results/figures/*.png` — accuracy, metrics, localisation matrix, latency
 
 Dependencies are managed via `pyproject.toml` + `uv.lock` (no `requirements.txt`).
 

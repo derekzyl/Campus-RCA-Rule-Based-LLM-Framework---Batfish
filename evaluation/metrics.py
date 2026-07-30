@@ -114,4 +114,13 @@ def write_report(rows: list[dict[str, Any]], out_dir: Path) -> Path:
             f"truth=`{r['truth_fault']}`@{r['truth_device']}"
         )
     (out_dir / "evaluation_report.md").write_text("\n".join(md))
+
+    # Tables + charts for dissertation Chapter 5
+    try:
+        from evaluation.plot_results import export_all
+
+        export_all(path, out_dir)
+    except Exception as exc:  # noqa: BLE001
+        # Keep evaluation usable even if matplotlib is unavailable.
+        (out_dir / "figures_error.txt").write_text(f"Figure export skipped: {exc}\n")
     return path

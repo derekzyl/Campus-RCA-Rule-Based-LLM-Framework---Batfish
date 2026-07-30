@@ -1,0 +1,36 @@
+% Auto-generated from evaluation_report.json — paste into Chapter 5
+
+% --- Aggregate metrics ---
+\begin{table}[ht]
+\centering
+\caption{Aggregate localisation and explanation metrics by mode}
+\label{tab:rca-aggregate}
+\begin{tabular}{lrrrrr}
+\toprule
+Mode & Accuracy & Keyword cov. & Hallucination & Faithfulness & Avg.\ ms \\
+\midrule
+rule\_only & 0.80 & 0.613 & 0.00 & 1.00 & 2567.8 \\
+llm\_only & 0.20 & 0.260 & 0.00 & 0.90 & 201569.4 \\
+hybrid & 0.80 & 0.613 & 0.33 & 0.60 & 245943.3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% --- Per-scenario localisation matrix ---
+\begin{table}[ht]
+\centering
+\caption{Per-scenario localisation outcomes (OK/MISS)}
+\label{tab:rca-per-scenario}
+\begin{tabular}{lccc}
+\toprule
+Scenario & rule\_only & llm\_only & hybrid \\
+\midrule
+acl\_deny\_http & OK & OK & OK \\
+missing\_ospf\_network & OK & MISS & OK \\
+interface\_shutdown & OK & MISS & OK \\
+wrong\_static\_route & OK & MISS & OK \\
+ospf\_passive\_misconfig & MISS & MISS & MISS \\
+\bottomrule
+\end{tabular}
+\end{table}
+
