@@ -935,19 +935,40 @@ class CampusRCAGUI(tk.Tk):
             ]
             for p in result["tables"].values():
                 lines.append(f"  - {p}")
-            lines.append("Figures:")
-            for p in result["figures"]:
-                lines.append(f"  - {p}")
-            return "\n".join(lines), str(result["out_dir"] / "figures")
+            if result.get("figure_error"):
+                lines.append("")
+                lines.append(f"Figures failed: {result['figure_error']}")
+                lines.append(
+                    "CSV/LaTeX tables were still written. On WSL try:\n"
+                    "  sudo apt install -y fonts-dejavu-core\n"
+                    "  rm -rf ~/.cache/matplotlib"
+                )
+            else:
+                lines.append("Figures:")
+                for p in result["figures"]:
+                    lines.append(f"  - {p}")
+            return "\n".join(lines), str(result["out_dir"] / "figures"), result.get("figure_error")
 
         def done(res):
-            text, fig_dir = res
+            text, fig_dir, err = res
             self.results_view.delete("1.0", "end")
             self.results_view.insert("1.0", text)
             self.refresh_results()
-            self.set_status(f"Figures written to {fig_dir}")
-            self.activity_var.set("Figures ready")
-            messagebox.showinfo("Figures generated", f"Charts saved under:\n{fig_dir}")
+            if err:
+                self.set_status("Tables written; figures failed (see details)")
+                self.activity_var.set("Figure render failed")
+                messagebox.showwarning(
+                    "Figures failed",
+                    f"Tables were written, but PNG charts failed.\n\n{err}\n\n"
+                    "On WSL Ubuntu:\n"
+                    "  sudo apt install -y fonts-dejavu-core\n"
+                    "  rm -rf ~/.cache/matplotlib\n"
+                    "Then click Generate figures again.",
+                )
+            else:
+                self.set_status(f"Figures written to {fig_dir}")
+                self.activity_var.set("Figures ready")
+                messagebox.showinfo("Figures generated", f"Charts saved under:\n{fig_dir}")
 
         self._worker(work, done, task="Generate figures")
 
