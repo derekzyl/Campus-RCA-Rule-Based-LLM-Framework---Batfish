@@ -53,9 +53,9 @@ write memory
 ###ON FIREWALL 1###
 configure terminal
 
-access-list DMZ-IN extended permit udp 12.20.20.0 255.255.255.192 host 192.168.80.12 eq domain
+access-list DMZ-IN extended permit udp 12.20.20.0 255.255.255.192 host 192.168.80.13 eq domain
 
-access-list DMZ-IN extended permit tcp 12.20.20.0 255.255.255.192 host 192.168.80.12 eq domain
+access-list DMZ-IN extended permit tcp 12.20.20.0 255.255.255.192 host 192.168.80.13 eq domain
 
 access-list DMZ-IN extended deny ip 12.20.20.0 255.255.255.192 192.168.0.0 255.255.0.0
 
@@ -75,8 +75,8 @@ ip access-list extended STUDENT-FILTER
  deny ip 192.168.30.0 0.0.0.255 192.168.10.0 0.0.0.255
 
  remark BLOCK NETWORK SERVICES EXCEPT DNS
- permit udp 192.168.30.0 0.0.0.255 host 192.168.80.12 eq domain
- permit tcp 192.168.30.0 0.0.0.255 host 192.168.80.12 eq domain
+ permit udp 192.168.30.0 0.0.0.255 host 192.168.80.13 eq domain
+ permit tcp 192.168.30.0 0.0.0.255 host 192.168.80.13 eq domain
 
  deny ip 192.168.30.0 0.0.0.255 192.168.80.0 0.0.0.255
 

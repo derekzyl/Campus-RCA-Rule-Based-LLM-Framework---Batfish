@@ -92,7 +92,7 @@ Access switches, APs, WLC, IP phones, printers, and most end hosts are **not** d
 | Guest WLAN | 65 | 11.10.65.0/24 | .1 |
 | VoIP | 70 | 192.168.70.0/24 | .1 |
 | Printers/IoT | 75 | 192.168.75.0/24 | .1 |
-| Network Services | 80 | 192.168.80.0/24 | .1 (DNS 192.168.80.12) |
+| Network Services | 80 | 192.168.80.0/24 | .1 (DNS 192.168.80.13) |
 | Internal Servers | 90 | 192.168.90.0/24 | .1 |
 | DMZ | 100 | 12.20.20.0/26 | fw1/fw2 |
 
@@ -140,7 +140,7 @@ Ground truth lives in `ground_truth/scenarios.yaml`. Snapshot dirs are under `co
 
 ## Source artefacts
 
-- Packet Tracer diagram: `campus_packet_tracer.png`
+- Packet Tracer diagram: `CAMPUS-NETWORK-TOPOLOGY.png` (same image as `../RCA-TOPOLOGY.png`)
 - OSPF & ACL lab notes: `ospf_acl_configs.txt`
 - Batfish baseline: `configs/baseline/`
 - Faulted snapshots: `configs/scenarios/`

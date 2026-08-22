@@ -2,6 +2,8 @@
 
 Prototype for the dissertation *Design and Evaluation of a Rule-Based LLM Framework for Root Cause Analysis in Campus Network Using Batfish*.
 
+Campus lab topology (Packet Tracer aligned): **dual cores**, **dual head routers**, **distribution-by-block**, and **10 labelled scenarios** — see [`docs/topology/README.md`](docs/topology/README.md).
+
 Hybrid pipeline:
 
 1. **Batfish** — deterministic reachability, routes, interfaces, ACL/filter evidence  
@@ -9,52 +11,6 @@ Hybrid pipeline:
 3. **LLM (Ollama)** — evidence-grounded explanation + remediation (advisory only)
 
 Evaluation modes: `rule_only` | `llm_only` | `hybrid` (RQ1–RQ3).
-
----
-
-## Campus lab topology (current)
-
-Packet Tracer–aligned **university main campus** model:
-
-- **Two head routers:** `campus_r1`, `campus_r2`
-- **Two firewalls:** `fw1`, `fw2`
-- **Two cores:** `core_sw1`, `core_sw2`
-- **Distribution by building/floor block:** `dsw_a_admin`, `dsw_a_acad`, `dsw_b_lib`, `dsw_b_student`, `dsw_c_lab`, `dsw_d_dc`, `dsw_d_media`, `dsw_dmz`
-- **10 labelled fault scenarios** (was 5)
-
-```text
-                         INTERNET ISP
-                       /              \
-                campus_r1            campus_r2
-                       \              /
-                        fw1        fw2
-                       /              \
-                  core_sw1 ======== core_sw2
-                     |                  |
-              Building / floor DSWs   DMZ + DC blocks
-```
-
-Full topology, Packet Tracer diagram, IP plan, and dissertation justification:
-
-→ **[`docs/topology/README.md`](docs/topology/README.md)**
-
-### Ten labelled scenarios
-
-| # | Scenario ID | Fault | Device |
-|---|---|---|---|
-| 1 | `student_acl_deny_mgt` | ACL deny (STUDENT-FILTER) | core_sw1 |
-| 2 | `guest_wlan_acl_deny` | ACL deny (GUEST-WLAN-FILTER) | core_sw1 |
-| 3 | `missing_ospf_students` | Missing OSPF (student VLAN) | dsw_b_student |
-| 4 | `core1_uplink_shutdown` | Interface down | core_sw1 |
-| 5 | `wrong_default_route_r1` | Wrong static default | campus_r1 |
-| 6 | `ospf_omit_academic` | Missing OSPF (academic VLAN) | dsw_a_acad |
-| 7 | `dmz_to_lan_leak_attempt` | ACL deny (DMZ-IN) | fw1 |
-| 8 | `fw1_inside_shutdown` | Interface down | fw1 |
-| 9 | `core2_student_uplink_down` | Interface down (redundancy) | core_sw2 |
-| 10 | `missing_ospf_dns_services` | Missing OSPF (services/DNS) | dsw_d_dc |
-
-Ground truth: `ground_truth/scenarios.yaml`  
-Regenerate configs: `uv run python scripts/generate_campus_topology.py`
 
 ---
 
