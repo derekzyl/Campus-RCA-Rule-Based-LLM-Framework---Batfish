@@ -2,38 +2,61 @@
 
 Prototype for the dissertation *Design and Evaluation of a Rule-Based LLM Framework for Root Cause Analysis in Campus Network Using Batfish*.
 
-Campus lab topology (Packet Tracer aligned): **dual cores**, **dual head routers**, **distribution-by-block**, and **10 labelled scenarios** — see [`docs/topology/README.md`](docs/topology/README.md).
 Hybrid pipeline:
 
 1. **Batfish** — deterministic reachability, routes, interfaces, ACL/filter evidence  
 2. **Python rules** — transparent mapping of evidence → fault classes  
-3. **LLM** — evidence-grounded explanation + remediation (advisory only)
+3. **LLM (Ollama)** — evidence-grounded explanation + remediation (advisory only)
 
-Evaluation modes: `rule_only` | `llm_only` | `hybrid` (matches RQ1–RQ3).
+Evaluation modes: `rule_only` | `llm_only` | `hybrid` (RQ1–RQ3).
 
-## Campus lab topology
+---
 
+## Campus lab topology (current)
+
+Packet Tracer–aligned **university main campus** model:
+
+- **Two head routers:** `campus_r1`, `campus_r2`
+- **Two firewalls:** `fw1`, `fw2`
+- **Two cores:** `core_sw1`, `core_sw2`
+- **Distribution by building/floor block:** `dsw_a_admin`, `dsw_a_acad`, `dsw_b_lib`, `dsw_b_student`, `dsw_c_lab`, `dsw_d_dc`, `dsw_d_media`, `dsw_dmz`
+- **10 labelled fault scenarios** (was 5)
+
+```text
+                         INTERNET ISP
+                       /              \
+                campus_r1            campus_r2
+                       \              /
+                        fw1        fw2
+                       /              \
+                  core_sw1 ======== core_sw2
+                     |                  |
+              Building / floor DSWs   DMZ + DC blocks
 ```
-                 [border1]---- Internet 203.0.113.0/24
-                     |
-                  [core1]
-                  /    \
-             [dist1]  [dist2]--+ CAMPUS_EDGE ACL
-                |        |
-          VLAN10      VLAN20
-        10.10.10.0   10.20.20.0
-          hostA        hostB (portal .50), hostC (.100)
-```
 
-Injected faults (ground truth in `ground_truth/scenarios.yaml`):
+Full topology, Packet Tracer diagram, IP plan, and dissertation justification:
 
-| Scenario | Fault class | Device |
-|---|---|---|
-| `acl_deny_http` | ACL deny (HTTP permit removed) | dist2 |
-| `missing_ospf_network` | Student prefix not in OSPF | dist1 |
-| `interface_shutdown` | Core uplink shut | core1 |
-| `wrong_static_route` | Bad default next-hop | core1 |
-| `ospf_passive_misconfig` | Faculty prefix not advertised | dist2 |
+→ **[`docs/topology/README.md`](docs/topology/README.md)**
+
+### Ten labelled scenarios
+
+| # | Scenario ID | Fault | Device |
+|---|---|---|---|
+| 1 | `student_acl_deny_mgt` | ACL deny (STUDENT-FILTER) | core_sw1 |
+| 2 | `guest_wlan_acl_deny` | ACL deny (GUEST-WLAN-FILTER) | core_sw1 |
+| 3 | `missing_ospf_students` | Missing OSPF (student VLAN) | dsw_b_student |
+| 4 | `core1_uplink_shutdown` | Interface down | core_sw1 |
+| 5 | `wrong_default_route_r1` | Wrong static default | campus_r1 |
+| 6 | `ospf_omit_academic` | Missing OSPF (academic VLAN) | dsw_a_acad |
+| 7 | `dmz_to_lan_leak_attempt` | ACL deny (DMZ-IN) | fw1 |
+| 8 | `fw1_inside_shutdown` | Interface down | fw1 |
+| 9 | `core2_student_uplink_down` | Interface down (redundancy) | core_sw2 |
+| 10 | `missing_ospf_dns_services` | Missing OSPF (services/DNS) | dsw_d_dc |
+
+Ground truth: `ground_truth/scenarios.yaml`  
+Regenerate configs: `uv run python scripts/generate_campus_topology.py`
+
+---
 
 ## Quick start (novice — one click)
 
@@ -43,164 +66,188 @@ chmod +x run.sh
 ./run.sh
 ```
 
-This script will:
+`run.sh` will:
 
 1. Detect OS / CPU architecture  
 2. Check Python 3.10+ and Tkinter  
 3. Install **uv** if needed and run `uv sync`  
-4. Ensure **Ollama** is running and the model is pulled (real LLM — not mock)  
-5. Try to start **Batfish** via rootless Podman or Docker; if unavailable, use offline evidence  
+4. Ensure **Ollama** is running and let you choose a **local** model (no re-download if present)  
+5. Try to start **Batfish** via Podman/Docker; if unavailable, fall back to offline evidence  
 6. Open the **Tkinter GUI**
 
-Skip containers entirely:
-
 ```bash
-./run.sh --skip-batfish
+./run.sh --skip-batfish    # no containers
+./run.sh --setup-only      # bootstrap only
+make run                   # same as ./run.sh
 ```
 
-On Parrot/Fedora (docker → podman shim), Batfish setup runs:
+On Parrot/Fedora (docker → podman shim):
 
 ```bash
 systemctl --user enable --now podman.socket
 ./scripts/ensure_batfish.sh
 ```
 
-Or: `make run`
-
-### GUI tabs
-
-| Tab | What it does |
-|---|---|
-| Setup | System checks, uv sync, start Ollama, pull model |
-| Diagnose | Pick scenario + mode (hybrid / rule_only / llm_only), run RCA, view explanation |
-| Evaluate | Full labelled comparison report (all scenarios × modes) |
-| Results | Browse reports; **Generate figures** (CSV/LaTeX/PNG); open charts |
-
-Manual GUI only (after setup): `uv run campus-rca-gui`
-
-Requires [uv](https://docs.astral.sh/uv/) and Ollama. On Debian/Parrot/Ubuntu, Tkinter may need:
+Requires [uv](https://docs.astral.sh/uv/) and Ollama. Tkinter on Debian/Ubuntu/Parrot:
 
 ```bash
 sudo apt install python3-tk
 ```
 
-## Quick start (CLI)
+### GUI tabs
+
+| Tab | What it does |
+|---|---|
+| **1. Setup** | Readiness checks, uv sync, start Ollama, choose local model, start Batfish |
+| **2. Diagnose** | Pick one of 10 scenarios + mode (`rule_only` / `llm_only` / `hybrid`), run RCA |
+| **3. Evaluate** | All scenarios × 3 modes → scored report |
+| **4. Results** | Browse JSON/MD/CSV/TeX/PNG; **Generate figures**; open charts folder |
+
+Manual GUI: `uv run campus-rca-gui`
+
+---
+
+## CLI
 
 ```bash
 uv sync
 cp -n .env.example .env
-export LLM_BACKEND=ollama USE_BATFISH=false
+
+# List the 10 scenarios
 uv run campus-rca list-scenarios
-uv run campus-rca diagnose acl_deny_http --mode hybrid --offline
-uv run python evaluation/run_eval.py --offline --llm-backend ollama
+
+# Fast deterministic path (recommended on CPU)
+uv run campus-rca diagnose student_acl_deny_mgt --mode rule_only --offline
+
+# Hybrid (rules classify + Ollama explains)
+uv run campus-rca diagnose missing_ospf_students --mode hybrid --offline
+
+# Full evaluation (10 × 3 modes)
+uv run python evaluation/run_eval.py --offline --llm-backend ollama --out results
+# or mock LLM for CI/demo:
+uv run python evaluation/run_eval.py --offline --llm-backend mock --modes rule_only --out results
 ```
 
-Reports land in `results/evaluation_report.md` and `results/evaluation_report.json`.
-
-Generate dissertation tables/charts from a report:
+### Tables & charts (Chapter 5)
 
 ```bash
 make figures
 # or:
 uv run python evaluation/plot_results.py --report results/evaluation_report.json
+# GUI Evaluate also writes under results/gui_eval/ and can Generate figures
 ```
 
 Outputs:
-- `results/evaluation_summary.csv` / `evaluation_rows.csv` — Excel/Sheets
-- `results/evaluation_tables.tex` — LaTeX tables for Chapter 5
-- `results/figures/*.png` — accuracy, metrics, localisation matrix, latency
 
-Dependencies are managed via `pyproject.toml` + `uv.lock` (no `requirements.txt`).
+| File | Use |
+|---|---|
+| `evaluation_report.md` / `.json` | Summary + per-scenario scores |
+| `evaluation_summary.csv` / `evaluation_rows.csv` | Excel / Sheets |
+| `evaluation_tables.tex` | LaTeX Chapter 5 |
+| `figures/fig_*.png` | Accuracy, metrics, OK/MISS matrix, latency |
 
-## Full stack with Batfish
+On **WSL** (especially projects under `/mnt/c/...`), figure export uses a Pillow fallback if matplotlib/FreeType hits raster overflow.
+
+---
+
+## Full stack with live Batfish
 
 ```bash
-# 1) Start Batfish
-./scripts/start_batfish.sh
-# or: docker compose up -d
+./scripts/start_batfish.sh   # or: docker compose up -d / ./scripts/ensure_batfish.sh
+cp -n .env.example .env      # USE_BATFISH=true, LLM_BACKEND=ollama
 
-# 2) Configure
-cp -n .env.example .env
-# set USE_BATFISH=true
-
-# 3) Diagnose using live Batfish snapshots under configs/scenarios/*
-uv run campus-rca diagnose missing_ospf_network --mode hybrid
-
-# 4) Comparative evaluation
+uv run campus-rca diagnose guest_wlan_acl_deny --mode hybrid
 uv run python evaluation/run_eval.py --out results
 ```
 
-## LLM backends
+---
 
-Set in `.env` or environment:
+## LLM backends
 
 | `LLM_BACKEND` | Notes |
 |---|---|
-| `mock` | Deterministic offline stand-in (default for demos/CI) |
-| `openai` | Requires `OPENAI_API_KEY` (temperature 0.0) |
-| `ollama` | Local `OLLAMA_BASE_URL` + `OLLAMA_MODEL` (recommended for dissertation ethics) |
-
-### Ollama setup
+| `ollama` | **Default for this project** — local model, ethics-friendly |
+| `openai` | Needs `OPENAI_API_KEY`, temperature 0.0 |
+| `mock` | Deterministic stand-in for CI / offline demos |
 
 ```bash
-# Install from https://ollama.com/download if needed, then:
-./scripts/setup_ollama.sh          # starts server + lets you pick a LOCAL model
-# or: make ollama
-
+./scripts/setup_ollama.sh
 uv run campus-rca check-llm
-uv run campus-rca diagnose acl_deny_http --mode hybrid --offline
-uv run python evaluation/run_eval.py --offline --llm-backend ollama --out results/ollama
 ```
 
-**Local models are reused** — if Ollama already has a model downloaded, the launcher/GUI lists it and will not re-download. You are asked which local model to use, or you can type a different name (download only if missing).
-
-In the GUI: **Choose Ollama model…** on the Setup tab (also prompted at startup when locals exist).
-
 Notes:
-- Evidence sent to the LLM is **compacted** (routes/ACL/traceroute slices) so local CPU models stay usable.
-- Default timeout is `OLLAMA_TIMEOUT_S=600` (CPU cold starts can take several minutes).
-- Prefer Ollama over OpenAI when prompts include campus configs (§1.6 ethics).
 
-Hybrid prompts force JSON answers and instruct the model **not** to contradict Batfish/rule evidence.
+- Local models are **listed and reused** (GUI/launcher ask which to use).  
+- Prompts are **compacted** for CPU.  
+- Tunables: `OLLAMA_MODEL`, `OLLAMA_TIMEOUT_S`, `OLLAMA_NUM_PREDICT`.  
+- Hybrid: **rules decide fault/device**; LLM explains only.
+
+---
 
 ## HTTP API
 
 ```bash
 uv run campus-rca serve --host 127.0.0.1 --port 8080
-# or: make serve
 # GET  /health
 # GET  /scenarios
-# POST /diagnose {"scenario_id":"acl_deny_http","mode":"hybrid","offline":true}
+# POST /diagnose {"scenario_id":"student_acl_deny_mgt","mode":"hybrid","offline":true}
 ```
+
+---
+
 ## Project layout
 
-```
-run.sh                        # ONE-CLICK: arch check → setup → Tkinter UI
-configs/baseline|scenarios/   # Batfish snapshots (configs/ + hosts/)
-ground_truth/scenarios.yaml   # labelled faults for scoring
+```text
+run.sh                         # one-click: checks → Ollama → Batfish → GUI
+docs/
+  topology/                    # Packet Tracer diagram + topology + justification
+  data_generation.md           # under-the-hood data flow
+configs/baseline/              # dual-core dual-edge by-block snapshots
+configs/scenarios/<id>/        # 10 faulted snapshots
+ground_truth/scenarios.yaml    # labels for scoring
+scripts/
+  generate_campus_topology.py  # rebuild baseline + scenarios
+  ensure_batfish.sh            # Podman/Docker Batfish
+  select_ollama_model.sh       # pick local Ollama model
 src/campus_rca/
-  batfish_client.py           # evidence collection (+ synthetic fallback)
-  rules/engine.py             # deterministic rules R1–R5
-  llm/backend.py              # openai | ollama
-  pipeline.py                 # rule_only / llm_only / hybrid
-  gui.py                      # Tkinter UI
-  setup_checks.py             # system / dep readiness
-  cli.py  api.py
-evaluation/                   # accuracy, faithfulness, hallucination metrics
-docker-compose.yml            # batfish/allinone
+  batfish_client.py            # evidence (+ synthetic offline fallback)
+  rules/engine.py              # R0–R5 deterministic rules
+  llm/                         # prompts + ollama/openai/mock
+  pipeline.py                  # rule_only / llm_only / hybrid
+  gui.py                       # Tkinter UI
+evaluation/
+  run_eval.py                  # comparative evaluation
+  metrics.py                   # accuracy, keywords, faithfulness
+  plot_results.py              # CSV / LaTeX / PNG export
+results/                       # reports, tables, figures
 ```
 
-## Safety / ethics (aligned with dissertation §1.6)
+---
+
+## Documentation index
+
+| Doc | Contents |
+|---|---|
+| [`docs/topology/README.md`](docs/topology/README.md) | Packet Tracer topology, devices, 10 scenarios, image justification |
+| [`docs/data_generation.md`](docs/data_generation.md) | How evidence → rules → LLM → scores → charts works |
+| [`chapter5_results_draft.md`](chapter5_results_draft.md) | Draft Chapter 5 results text (re-run eval after topology update) |
+
+---
+
+## Safety / ethics
 
 - Diagnostics are **read-only**; remediation is advisory (`ALLOW_REMEDIATION_APPLY=false`).
-- Prefer local Ollama for sensitive configs; sanitise untrusted log text before prompting.
-- Synthetic campus topology — no live institutional traffic.
+- Prefer local Ollama when prompts include campus configs.
+- Lab topology is synthetic — no live institutional traffic.
+
+---
 
 ## Dissertation mapping
 
 | Objective | Artifact |
 |---|---|
-| Rule-based verification layer | `rules/engine.py` + Batfish evidence |
-| LLM reasoning on validated evidence | `pipeline.py` hybrid mode + `llm/` |
-| Scenario evaluation | `evaluation/run_eval.py` + ground truth |
-| Compare rule / LLM / hybrid | three modes + `results/` report |
+| Campus design case study | Packet Tracer figure + `docs/topology/` |
+| Rule-based verification | `rules/engine.py` + Batfish evidence |
+| LLM on validated evidence | hybrid mode in `pipeline.py` + `llm/` |
+| Scenario evaluation (n=10) | `evaluation/run_eval.py` + `ground_truth/scenarios.yaml` |
+| Compare rule / LLM / hybrid | three modes + `results/` + figures |

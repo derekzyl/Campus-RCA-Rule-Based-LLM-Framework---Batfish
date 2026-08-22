@@ -2,7 +2,7 @@
 
 This document maps the Packet Tracer physical/logical design onto the Batfish RCA lab used by the dissertation prototype.
 
-![Campus Packet Tracer topology](campus_packet_tracer.png)
+![Campus Packet Tracer topology](CAMPUS-NETWORK-TOPOLOGY.png)
 
 ## Justifying the Packet Tracer image (for the dissertation)
 

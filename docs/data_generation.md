@@ -1,6 +1,6 @@
 # How Campus RCA data generation works (under the hood)
 
-This document explains how data flows from authored configs to dissertation tables/charts.
+This document explains how data flows from authored configs to dissertation tables/charts for the **current dual-core / dual-edge / 10-scenario** lab.
 
 ```mermaid
 flowchart TD
@@ -19,18 +19,20 @@ flowchart TD
   L --> M[plot_results: CSV / LaTeX / PNG]
 ```
 
+Topology reference: [`topology/README.md`](topology/README.md).
+
 ---
 
 ## 1. Scenario catalogue (what to test)
 
-**`ground_truth/scenarios.yaml`** is the master list. Each scenario defines:
+**`ground_truth/scenarios.yaml`** lists **10** labelled campus faults. Each entry defines:
 
-- `id`, `snapshot_dir` (which faulted configs to load)
-- `symptom` (human text)
-- `probe` (src/dst IP, port, protocol) — what Batfish will test
-- `ground_truth` (expected fault type + device + keywords) — used only for scoring
+- `id`, `snapshot_dir`, optional `block` (building/floor)
+- `symptom` (operator text)
+- `probe` (src/dst IP, port, protocol) — Batfish test flow
+- `ground_truth` (fault type, device, keywords) — scoring only
 
-Nothing “generates” this; it is authored as labelled lab faults.
+Examples: `student_acl_deny_mgt`, `wrong_default_route_r1`, `missing_ospf_dns_services`.
 
 ---
 
@@ -38,41 +40,31 @@ Nothing “generates” this; it is authored as labelled lab faults.
 
 | Path | Role |
 |---|---|
-| `configs/baseline/` | Known-good campus (core1, dist1, dist2, border1 + hosts) |
-| `configs/scenarios/<id>/` | Copy of baseline with **one** deliberate fault |
+| `configs/baseline/` | Known-good dual-core dual-edge by-block campus |
+| `configs/scenarios/<id>/` | Baseline copy with **one** deliberate fault |
+| `scripts/generate_campus_topology.py` | Rebuilds baseline + all 10 scenario snapshots |
 
-Examples:
+Devices include `campus_r1/r2`, `fw1/fw2`, `core_sw1/sw2`, and per-block DSWs (`dsw_a_admin`, `dsw_b_student`, …).
 
-- `acl_deny_http` → `dist2.cfg` removes HTTP permit on `CAMPUS_EDGE`
-- `wrong_static_route` → `core1.cfg` default next-hop = `10.10.10.1`
-- `interface_shutdown` → `core1` Gi0/1 `shutdown`
+Policies come from campus lab notes (`STUDENT-FILTER`, `GUEST-WLAN-FILTER`, `DMZ-IN`, OSPF area 0).
 
-Hosts (`hosts/hostA.json` …) give Batfish endpoints like `10.10.10.10`.
+Hosts (`student_pc`, `acad_pc`, `dns_srv`, `web_dmz`, …) provide Batfish endpoints.
 
 ---
 
 ## 3. Evidence generation — `batfish_client.py`
 
-When Diagnose/Evaluate runs with Offline **unchecked**:
+With Offline **unchecked** / `USE_BATFISH=true`:
 
-1. Connect to Batfish (`localhost`, network `campus`)
-2. `init_snapshot(configs/scenarios/<id>)`
-3. Run queries and convert DataFrames → JSON dicts:
-   - `initIssues`
-   - `interfaceProperties`
-   - `routes`
-   - `traceroute` + `reachability` (using the scenario probe)
-   - `testFilters` (ACL behaviour on dist*)
-4. Optionally load baseline for a light differential note
-5. Wrap into **`EvidenceBundle`** (`models.py`)
-6. Cache to `data/evidence_cache/<scenario_id>.json`
+1. Connect to Batfish  
+2. `init_snapshot(configs/scenarios/<id>)`  
+3. Collect `initIssues`, interfaces, routes, traceroute, reachability, `testFilters`  
+4. Wrap as **`EvidenceBundle`**  
+5. Cache under `data/evidence_cache/<id>.json`
 
-If Offline **checked** / `USE_BATFISH=false`:
+With Offline **checked**:
 
-- skips live Batfish
-- uses `_synthetic_fallback()` — handcrafted evidence per scenario that still matches ground truth (for demos/CI)
-
-A saved diagnose file such as `rca_result.json` is basically one full **`RCAResult`** including a live Batfish `EvidenceBundle`.
+- Uses scenario-aligned **synthetic** evidence (for demos/CI when Batfish is down)
 
 ---
 
@@ -80,118 +72,77 @@ A saved diagnose file such as `rca_result.json` is basically one full **`RCAResu
 
 `RCAPipeline.run_scenario(scenario, mode)`:
 
-1. Build `ProbeSpec` from YAML
-2. `collect()` → `EvidenceBundle`
-3. Branch on mode:
-
-| Mode | What runs | Who decides fault/device |
+| Mode | Runs | Who decides fault/device |
 |---|---|---|
-| `rule_only` | `RuleEngine.diagnose` | Rules |
-| `llm_only` | `LLMBackend.diagnose_llm_only` | LLM |
-| `hybrid` | Rules **then** LLM explain | **Rules** (LLM only explains) |
+| `rule_only` | RuleEngine | Rules |
+| `llm_only` | LLM only | LLM |
+| `hybrid` | Rules then LLM explain | **Rules** (LLM explains) |
 
-Output: **`RCAResult`** (evidence + optional rule/LLM diags + `final_*` fields + timing).
+Output: **`RCAResult`**.
 
-- GUI Diagnose / CLI `campus-rca diagnose` call this once.
-- Evaluate loops: 5 scenarios × 3 modes → many `RCAResult`s.
-
----
-
-## 5. Rule “data” — `rules/engine.py`
-
-Pure Python over the evidence (no network):
-
-- **R1 ACL deny** — DENY in acl_trace / denied dispositions
-- **R2 interface down** — Active/Admin_Up false
-- **R3 wrong static** — router default static next-hop into campus LAN (**not** host gateways)
-- **R4 missing route** — NO_ROUTE / prefix absent from core OSPF
-- **R5 OSPF neighbor** — init issues text
-- **R0 OK** — reachable and no deny/no_route
-
-Hits sorted by confidence → `primary` + `candidates` = **`RuleDiagnosis`**.
+GUI Diagnose / CLI call this once; Evaluate loops **10 scenarios × 3 modes**.
 
 ---
 
-## 6. LLM “data” — `llm/prompts.py` + `llm/backend.py`
+## 5. Rules — `rules/engine.py`
 
-1. `compact_evidence()` shrinks routes/ACLs/traces (CPU-friendly)
-2. Build system + user prompt
-3. `OllamaBackend.complete()` → `POST /api/chat` (`format: json`)
-4. Parse JSON (`_extract_json`, with repair/fallback) → **`LLMDiagnosis`**
-5. Light hallucination flags (devices not in evidence, contradicting rules)
+Deterministic rules over evidence (router nodes only — not host defaults):
 
-In **hybrid**, final fault/device still come from rules; LLM fills explanation/remediation.
+- **R1** ACL deny — DENY / denied dispositions (`STUDENT-FILTER`, `GUEST-WLAN-FILTER`, `DMZ-IN`, …)  
+- **R2** Interface down — Active/Admin_Up false on cores/FW/DSW  
+- **R3** Wrong static — edge default next-hop into campus LAN  
+- **R4** Missing route — NO_ROUTE / prefix absent at cores (owned by DSW block)  
+- **R5** OSPF neighbor issues  
+- **R0** Reachability OK (suppressed when deny/no_route present)
 
 ---
 
-## 7. Evaluation numbers — `evaluation/metrics.py` + `run_eval.py`
+## 6. LLM — `llm/prompts.py` + `llm/backend.py`
 
-For each `RCAResult` vs YAML ground truth:
+1. Compact evidence (router-focused)  
+2. Call Ollama/OpenAI/mock with JSON schema  
+3. Parse/repair JSON → **`LLMDiagnosis`**  
+4. Soft-fail to rule diagnosis if JSON is invalid (hybrid stays usable)
+
+---
+
+## 7. Evaluation — `evaluation/metrics.py` + `run_eval.py`
 
 | Metric | Meaning |
 |---|---|
 | `localisation_correct` | fault type **and** device match |
-| `keyword_coverage` | fraction of GT keywords in explanation |
-| `hallucination_rate` | from LLM claim flags |
+| `keyword_coverage` | GT keywords in explanation |
+| `hallucination_rate` | LLM claim flags |
 | `evidence_faithfulness` | cited refs exist in evidence |
 | `elapsed_ms` | wall time |
 
-`summarize()` aggregates per mode → **`evaluation_report.json`** + `.md`.
-
-- GUI Evaluate writes under `results/gui_eval/`.
-- CLI: `evaluation/run_eval.py --out results`.
+Writes `evaluation_report.json` + `.md` (GUI: `results/gui_eval/`).
 
 ---
 
 ## 8. Tables & charts — `evaluation/plot_results.py`
 
-Reads `evaluation_report.json` and generates:
+From `evaluation_report.json`:
 
-- `evaluation_rows.csv` / `evaluation_summary.csv`
-- `evaluation_tables.tex`
-- `figures/fig_*.png` (accuracy, metrics, OK/MISS matrix, latency)
+- CSV summary/rows  
+- LaTeX tables  
+- PNG charts (matplotlib; **Pillow fallback on WSL**)
 
-Triggered by:
-
-- Evaluate finishing (`write_report` auto-calls it)
-- Results tab → **Generate figures**
-- `make figures`
+Triggers: Evaluate finish, Results → **Generate figures**, or `make figures`.
 
 ---
 
-## 9. UI wiring — `gui.py`
+## 9. UI — `gui.py` / `run.sh`
 
-| Tab | Calls |
+| Tab | Role |
 |---|---|
-| Setup | `setup_checks.py`, Ollama/Batfish scripts |
-| Diagnose | `RCAPipeline.run_scenario` → show/save JSON |
-| Evaluate | loop modes → `score_row` → `write_report` |
-| Results | browse files → `plot_results.export_all` |
-
-`run.sh` only bootstraps env (uv, Ollama, Batfish) then launches this GUI.
+| Setup | uv, Ollama model pick, Batfish |
+| Diagnose | one of 10 scenarios |
+| Evaluate | full comparative run |
+| Results | reports + figures |
 
 ---
 
-## Mental model (one sentence)
+## Mental model
 
-**You authored faulted configs + labels → Batfish turns them into structured evidence → rules/LLM turn evidence into diagnoses → metrics compare diagnoses to labels → plot_results turns scores into dissertation tables/charts.**
-
----
-
-## Key source files
-
-| File | Responsibility |
-|---|---|
-| `ground_truth/scenarios.yaml` | Labelled scenarios + probes + ground truth |
-| `configs/baseline/`, `configs/scenarios/` | Device/host snapshots |
-| `src/campus_rca/models.py` | Data shapes (`EvidenceBundle`, `RCAResult`, …) |
-| `src/campus_rca/batfish_client.py` | Live/synthetic evidence collection |
-| `src/campus_rca/rules/engine.py` | Deterministic fault classification |
-| `src/campus_rca/llm/prompts.py` | Prompt compaction + templates |
-| `src/campus_rca/llm/backend.py` | Ollama/OpenAI/mock completion + JSON parse |
-| `src/campus_rca/pipeline.py` | End-to-end diagnose orchestration |
-| `src/campus_rca/gui.py` / `cli.py` / `api.py` | Front ends |
-| `evaluation/metrics.py` | Scoring + report JSON/MD |
-| `evaluation/run_eval.py` | Full comparative evaluation loop |
-| `evaluation/plot_results.py` | CSV / LaTeX / PNG export |
-| `results/` | Generated reports, tables, figures |
+**Packet Tracer design → Batfish dual-core by-block snapshots + 10 labelled faults → evidence → rules/LLM diagnoses → scored report → Chapter 5 tables/charts.**

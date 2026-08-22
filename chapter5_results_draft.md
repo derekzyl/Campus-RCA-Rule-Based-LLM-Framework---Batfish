@@ -1,22 +1,27 @@
 # Chapter 5 — Results (draft)
 
 > Paste into the dissertation Results / Evaluation chapter.  
-> Source: `results/evaluation_report.md` (five labelled campus scenarios × three modes).  
-> **Before submission:** re-run Evaluate with live Batfish + your chosen Ollama model, then update the numbers below if they differ.
+> **Topology:** dual-core / dual head-router / by-block distribution with **10** scenarios — see `docs/topology/README.md`.  
+> **Before submission:** re-run Evaluate (live Batfish + Ollama if possible), then replace the numbers below. Older tables below may still reflect the previous 5-scenario offline run.
 
 ---
 
 ## 5.x Experimental setup (brief)
 
-The prototype was evaluated on five injected campus faults with known ground truth:
+The prototype targets the Packet Tracer–aligned dual-core campus lab (see `docs/topology/README.md`) with **ten** injected faults and known ground truth:
 
 | Scenario ID | Injected fault | Device |
 |---|---|---|
-| `acl_deny_http` | ACL deny (HTTP to faculty portal) | dist2 |
-| `missing_ospf_network` | Missing OSPF advertisement (student VLAN) | dist1 |
-| `interface_shutdown` | Core uplink shutdown | core1 |
-| `wrong_static_route` | Incorrect default next-hop | core1 |
-| `ospf_passive_misconfig` | Faculty prefix not advertised | dist2 |
+| `student_acl_deny_mgt` | STUDENT-FILTER ACL deny | core_sw1 |
+| `guest_wlan_acl_deny` | GUEST-WLAN-FILTER ACL deny | core_sw1 |
+| `missing_ospf_students` | Student VLAN not in OSPF | dsw_b_student |
+| `core1_uplink_shutdown` | Core uplink shut | core_sw1 |
+| `wrong_default_route_r1` | Bad default next-hop | campus_r1 |
+| `ospf_omit_academic` | Academic VLAN not in OSPF | dsw_a_acad |
+| `dmz_to_lan_leak_attempt` | DMZ-IN ACL deny | fw1 |
+| `fw1_inside_shutdown` | Firewall inside link shut | fw1 |
+| `core2_student_uplink_down` | Redundant core uplink shut | core_sw2 |
+| `missing_ospf_dns_services` | Services/DNS VLAN not in OSPF | dsw_d_dc |
 
 Three diagnosis modes were compared:
 
@@ -25,6 +30,8 @@ Three diagnosis modes were compared:
 - **hybrid** — rules decide fault class and device; LLM produces operator-facing explanation
 
 Localisation was scored correct only when both **fault type** and **device** matched ground truth. Supporting metrics were keyword coverage (explanation content), hallucination rate, and evidence faithfulness.
+
+> Offline `rule_only` smoke test on the 10-scenario lab reported **10/10** localisation correct. Replace aggregate tables below after a full Evaluate run (rule_only + llm_only + hybrid).
 
 ---
 
