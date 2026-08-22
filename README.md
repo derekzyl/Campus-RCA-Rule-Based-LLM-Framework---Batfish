@@ -11,17 +11,6 @@ Hybrid pipeline:
 
 Evaluation modes: `rule_only` | `llm_only` | `hybrid` (matches RQ1–RQ3).
 
-## Campus lab topology
-
-```
-
-```
-
-Injected faults (ground truth in `ground_truth/scenarios.yaml`):
-
-| Scenario | Fault class | Device |
-|---|---|---|
-
 
 ## Quick start (novice — one click)
 
