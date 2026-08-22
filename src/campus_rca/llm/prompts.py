@@ -8,19 +8,34 @@ from campus_rca.models import EvidenceBundle, RuleDiagnosis
 SYSTEM_PROMPT = """Network RCA assistant. Respond ONLY with valid compact JSON:
 {"root_cause":"one sentence","fault_type":"acl_deny","device":"dist2","confidence":0.9,"explanation":"2-3 sentences","evidence_used":["routes"],"remediation":["step"],"uncertainties":[]}
 fault_type must be exactly one of: acl_deny, missing_route, interface_down, wrong_static_route, ospf_neighbor, unknown.
-device must be a real hostname from evidence (e.g. core1, dist1, dist2, border1) or JSON null.
+device must be a real hostname from evidence (e.g. core_sw1, dsw_b_student, campus_r1, fw1) or JSON null.
 Ground claims in evidence only. Do not invent devices or routes."""
 
 
 def compact_evidence(evidence: EvidenceBundle, max_routes: int = 6) -> dict[str, Any]:
     """Aggressively shrink Batfish evidence for CPU-bound local LLMs."""
-    routers = {"core1", "dist1", "dist2", "border1"}
+    routers = {
+        "campus_r1",
+        "campus_r2",
+        "fw1",
+        "fw2",
+        "core_sw1",
+        "core_sw2",
+        "dsw_a_admin",
+        "dsw_a_acad",
+        "dsw_b_lib",
+        "dsw_b_student",
+        "dsw_c_lab",
+        "dsw_d_dc",
+        "dsw_d_media",
+        "dsw_dmz",
+    }
     interesting = [
         i
         for i in evidence.interfaces
         if (
-            (isinstance(i.get("Interface"), dict) and i["Interface"].get("hostname") in routers)
-            or True
+            isinstance(i.get("Interface"), dict)
+            and i["Interface"].get("hostname") in routers
         )
         and (
             i.get("Active") is False

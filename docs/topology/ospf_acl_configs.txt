@@ -1,0 +1,232 @@
+~OSPF & ACL CONFIGURATIONS~
+
+###Standard ACL FOR MGT###
+
+configure terminal
+
+access-list 1 permit 192.168.10.0 0.0.0.255 
+access-list 1 deny any
+
+line vty 0 15
+
+access-class 1 in
+
+exec-timeout 20 0
+
+end
+write memory
+
+##Guest WLAN in 11.10.65.0/24 should not reach internal network####
+configure terminal
+
+ip access-list extended GUEST-WLAN-FILTER
+
+ remark BLOCK GUEST ACCESS TO WIRED CAMPUS LAN
+ deny ip 11.10.65.0 0.0.0.255 192.168.0.0 0.0.255.255
+
+ remark BLOCK GUEST ACCESS TO STAFF WLAN
+ deny ip 11.10.65.0 0.0.0.255 11.10.55.0 0.0.0.255
+
+ remark BLOCK GUEST ACCESS TO STUDENT WLAN
+ deny ip 11.10.65.0 0.0.0.255 11.10.60.0 0.0.0.255
+
+ remark ALLOW REMAINING TRAFFIC
+ permit ip 11.10.65.0 0.0.0.255 any
+
+exit
+
+##Apply inbound on VLAN 65##
+interface vlan 65
+ ip access-group GUEST-WLAN-FILTER in
+exit
+
+end
+write memory
+
+##DMZ Policy, network is 12.20.20.0/26##
+#DMZ → Internet        Allowed
+#DMZ → Internal LAN    Denied by default
+#DMZ → DNS Server      Allowed
+#Inside → DMZ          Allowed as required
+#Internet → DMZ        Only specifically published services
+
+###ON FIREWALL 1###
+configure terminal
+
+access-list DMZ-IN extended permit udp 12.20.20.0 255.255.255.192 host 192.168.80.12 eq domain
+
+access-list DMZ-IN extended permit tcp 12.20.20.0 255.255.255.192 host 192.168.80.12 eq domain
+
+access-list DMZ-IN extended deny ip 12.20.20.0 255.255.255.192 192.168.0.0 255.255.0.0
+
+access-list DMZ-IN extended deny ip 12.20.20.0 255.255.255.192 11.10.0.0 255.255.0.0
+
+access-list DMZ-IN extended permit ip 12.20.20.0 255.255.255.192 any
+
+access-group DMZ-IN in interface dmz
+
+##students to be separated from management and infrastructure##
+##CONFIGURATION ON BOTH CORE SWITCHES##
+configure terminal
+
+ip access-list extended STUDENT-FILTER
+
+ remark BLOCK MANAGEMENT NETWORK
+ deny ip 192.168.30.0 0.0.0.255 192.168.10.0 0.0.0.255
+
+ remark BLOCK NETWORK SERVICES EXCEPT DNS
+ permit udp 192.168.30.0 0.0.0.255 host 192.168.80.12 eq domain
+ permit tcp 192.168.30.0 0.0.0.255 host 192.168.80.12 eq domain
+
+ deny ip 192.168.30.0 0.0.0.255 192.168.80.0 0.0.0.255
+
+ remark ALLOW OTHER TRAFFIC
+ permit ip 192.168.30.0 0.0.0.255 any
+
+exit
+
+interface vlan 30
+ ip access-group STUDENT-FILTER in
+exit
+
+end
+
+##ALL OSPF Area 0 ###
+##CORE-SW1 OSPF##
+router ospf 1
+ router-id 1.1.1.1
+
+ passive-interface default
+
+ no passive-interface vlan 254
+ no passive-interface gigabitEthernet1/0/24
+
+ network 192.168.10.0 0.0.0.255 area 0
+ network 192.168.11.0 0.0.0.255 area 0
+ network 192.168.12.0 0.0.0.255 area 0
+ network 192.168.20.0 0.0.0.255 area 0
+ network 192.168.30.0 0.0.0.255 area 0
+ network 192.168.40.0 0.0.0.255 area 0
+ network 192.168.50.0 0.0.0.255 area 0
+ network 192.168.70.0 0.0.0.255 area 0
+ network 192.168.75.0 0.0.0.255 area 0
+ network 192.168.80.0 0.0.0.255 area 0
+ network 192.168.90.0 0.0.0.255 area 0
+
+ network 11.10.55.0 0.0.0.255 area 0
+ network 11.10.60.0 0.0.0.255 area 0
+ network 11.10.65.0 0.0.0.255 area 0
+
+ network 192.168.254.0 0.0.0.3 area 0
+ network 192.168.250.0 0.0.0.3 area 0
+
+##CORE-SW2 OSPF##
+configure terminal
+
+ip routing
+
+router ospf 1
+
+ router-id 2.2.2.2
+
+ passive-interface default
+
+ no passive-interface vlan 254
+ no passive-interface gigabitEthernet1/0/24
+
+ network 192.168.10.0 0.0.0.255 area 0
+ network 192.168.11.0 0.0.0.255 area 0
+ network 192.168.12.0 0.0.0.255 area 0
+ network 192.168.20.0 0.0.0.255 area 0
+ network 192.168.30.0 0.0.0.255 area 0
+ network 192.168.40.0 0.0.0.255 area 0
+ network 192.168.50.0 0.0.0.255 area 0
+ network 192.168.70.0 0.0.0.255 area 0
+ network 192.168.75.0 0.0.0.255 area 0
+ network 192.168.80.0 0.0.0.255 area 0
+ network 192.168.90.0 0.0.0.255 area 0
+
+ network 11.10.55.0 0.0.0.255 area 0
+ network 11.10.60.0 0.0.0.255 area 0
+ network 11.10.65.0 0.0.0.255 area 0
+
+ network 192.168.254.0 0.0.0.3 area 0
+ network 192.168.250.4 0.0.0.3 area 0
+
+exit
+
+end
+write memory
+
+##FIREWALL-1 OSPF##
+*Inside:  192.168.250.2/30
+*Outside: 100.100.50.2/30
+*DMZ:     12.20.20.1/26
+
+##CONFIGURATION##
+configure terminal
+
+router ospf 1
+
+ router-id 3.3.3.3
+
+ network 192.168.250.0 255.255.255.252 area 0
+ network 100.100.50.0 255.255.255.252 area 0
+ network 12.20.20.0 255.255.255.192 area 0
+
+ passive-interface dmz
+
+exit
+
+##FIREWALL-2 OSPF##
+*Inside:  192.168.250.6/30
+*Outside: 100.100.50.6/30
+*DMZ:     12.20.20.2/26
+
+configure terminal
+
+router ospf 1
+
+ router-id 4.4.4.4
+
+ network 192.168.250.4 255.255.255.252 area 0
+ network 100.100.50.4 255.255.255.252 area 0
+
+exit
+
+##MAIN CAMPUS R1 OSPF##
+*Router 1 firewall-facing address:100.100.50.1/30
+
+configure terminal
+ip route 0.0.0.0 0.0.0.0 <ISP-NEXT-HOP>
+
+router ospf 1
+
+ router-id 5.5.5.5
+
+ network 100.100.50.0 0.0.0.3 area 0
+
+ default-information originate metric 10 metric-type 1
+
+exit
+
+end
+write memory
+
+###MAIN-CAMPUS-R2 OSPF####
+configure terminal
+ip route 0.0.0.0 0.0.0.0 <ISP2-NEXT-HOP>
+
+router ospf 1
+
+ router-id 6.6.6.6
+
+ network 100.100.50.4 0.0.0.3 area 0
+
+ default-information originate metric 100 metric-type 1
+
+exit
+
+end
+write memory
+

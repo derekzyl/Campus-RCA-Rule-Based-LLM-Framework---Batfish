@@ -1,0 +1,10 @@
+{
+  "hostname": "guest_wifi",
+  "hostInterfaces": {
+    "eth0": {
+      "name": "eth0",
+      "prefix": "11.10.65.21/24",
+      "gateway": "11.10.65.1"
+    }
+  }
+}

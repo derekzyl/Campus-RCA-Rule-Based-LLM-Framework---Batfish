@@ -1,0 +1,10 @@
+{
+  "hostname": "mgt_pc",
+  "hostInterfaces": {
+    "eth0": {
+      "name": "eth0",
+      "prefix": "192.168.10.51/24",
+      "gateway": "192.168.10.2"
+    }
+  }
+}

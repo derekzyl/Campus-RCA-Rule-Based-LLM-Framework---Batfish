@@ -1,0 +1,10 @@
+{
+  "hostname": "web_dmz",
+  "hostInterfaces": {
+    "eth0": {
+      "name": "eth0",
+      "prefix": "12.20.20.20/26",
+      "gateway": "12.20.20.1"
+    }
+  }
+}

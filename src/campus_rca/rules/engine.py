@@ -6,9 +6,50 @@ from typing import Any
 from campus_rca.models import EvidenceBundle, FaultType, RuleDiagnosis, RuleHit
 
 
-# Batfish host nodes (hostA/hostB/…) advertise normal LAN default gateways —
-# those must not be treated as campus routing faults.
-ROUTER_NODES = frozenset({"core1", "dist1", "dist2", "border1"})
+# Infrastructure / distribution nodes (exclude Batfish host endpoints).
+ROUTER_NODES = frozenset(
+    {
+        "campus_r1",
+        "campus_r2",
+        "fw1",
+        "fw2",
+        "core_sw1",
+        "core_sw2",
+        "dsw_a_admin",
+        "dsw_a_acad",
+        "dsw_b_lib",
+        "dsw_b_student",
+        "dsw_c_lab",
+        "dsw_d_dc",
+        "dsw_d_media",
+        "dsw_dmz",
+        # legacy names kept for older caches
+        "core1",
+        "dist1",
+        "dist2",
+        "border1",
+    }
+)
+
+# Prefix ownership for missing-route localisation
+PREFIX_OWNER = {
+    "192.168.30.0/24": "dsw_b_student",
+    "192.168.20.0/24": "dsw_a_acad",
+    "192.168.11.0/24": "dsw_a_admin",
+    "192.168.12.0/24": "dsw_a_acad",
+    "192.168.40.0/24": "dsw_c_lab",
+    "192.168.50.0/24": "dsw_b_lib",
+    "192.168.80.0/24": "dsw_d_dc",
+    "192.168.90.0/24": "dsw_d_dc",
+    "11.10.65.0/24": "dsw_b_student",
+    "12.20.20.0/26": "fw1",
+}
+
+DEVICE_RE = (
+    r"\b(campus_r1|campus_r2|fw1|fw2|core_sw1|core_sw2|"
+    r"dsw_a_admin|dsw_a_acad|dsw_b_lib|dsw_b_student|dsw_c_lab|"
+    r"dsw_d_dc|dsw_d_media|dsw_dmz|core1|dist1|dist2|border1)\b"
+)
 
 
 def _s(obj: Any) -> str:
@@ -16,23 +57,43 @@ def _s(obj: Any) -> str:
 
 
 def _blob(evidence: EvidenceBundle) -> str:
-    parts = [
-        evidence.model_dump_json(),
-    ]
-    return " ".join(parts).lower()
+    return evidence.model_dump_json().lower()
 
 
 def _is_router(node: Any) -> bool:
     return _s(node) in ROUTER_NODES
 
 
-class RuleEngine:
-    """
-    Deterministic diagnostic rules over Batfish evidence.
+def _prefix_for_ip(ip: str) -> str | None:
+    if ip.startswith("192.168.30."):
+        return "192.168.30.0/24"
+    if ip.startswith("192.168.20."):
+        return "192.168.20.0/24"
+    if ip.startswith("192.168.11."):
+        return "192.168.11.0/24"
+    if ip.startswith("192.168.12."):
+        return "192.168.12.0/24"
+    if ip.startswith("192.168.40."):
+        return "192.168.40.0/24"
+    if ip.startswith("192.168.50."):
+        return "192.168.50.0/24"
+    if ip.startswith("192.168.80."):
+        return "192.168.80.0/24"
+    if ip.startswith("192.168.90."):
+        return "192.168.90.0/24"
+    if ip.startswith("11.10.65."):
+        return "11.10.65.0/24"
+    if ip.startswith("12.20.20."):
+        return "12.20.20.0/26"
+    if ip.startswith("10.10.10."):
+        return "10.10.10.0/24"
+    if ip.startswith("10.20.20."):
+        return "10.20.20.0/24"
+    return None
 
-    Rules are intentionally transparent and ordered by specificity so that
-    overlapping symptoms (e.g. unreachable) resolve to the most precise cause.
-    """
+
+class RuleEngine:
+    """Deterministic diagnostic rules over Batfish campus evidence."""
 
     def diagnose(self, evidence: EvidenceBundle) -> RuleDiagnosis:
         hits: list[RuleHit] = []
@@ -80,7 +141,10 @@ class RuleEngine:
                     rule_id="R1_ACL_DENY",
                     fault_type=FaultType.ACL_DENY,
                     confidence=0.92 if denied else 0.75,
-                    device=device or self._guess_device(blob, ["dist2", "dist1", "core1"]),
+                    device=device
+                    or self._guess_device(
+                        blob, ["core_sw1", "fw1", "dsw_b_student", "core_sw2", "dist2"]
+                    ),
                     object=str(filter_name) if filter_name else "ACL",
                     layer="policy",
                     rationale=(
@@ -101,8 +165,7 @@ class RuleEngine:
             hostname = iface.get("hostname") if isinstance(iface, dict) else None
             iname = iface.get("interface") if isinstance(iface, dict) else str(iface)
             down = active is False or admin is False or "shutdown" in _s(row.get("Description"))
-            # Also catch synthetic Active False
-            if down:
+            if down and (hostname is None or _is_router(hostname)):
                 hits.append(
                     RuleHit(
                         rule_id="R2_INTERFACE_DOWN",
@@ -115,34 +178,26 @@ class RuleEngine:
                         evidence_refs=["interfaces"],
                     )
                 )
-        if not hits and "shutdown" in blob and "gigabitethernet0/1" in blob:
-            hits.append(
-                RuleHit(
-                    rule_id="R2_INTERFACE_DOWN",
-                    fault_type=FaultType.INTERFACE_DOWN,
-                    confidence=0.7,
-                    device="core1",
-                    object="GigabitEthernet0/1",
-                    layer="interface",
-                    rationale="Evidence mentions shutdown on core uplink.",
-                    evidence_refs=["interfaces"],
-                )
-            )
         return hits
 
     def _rule_wrong_static(self, evidence: EvidenceBundle, blob: str) -> list[RuleHit]:
         hits = []
         for row in evidence.routes:
             node = row.get("Node")
-            # Host default→gateway routes are normal; only score router misconfigs.
             if not _is_router(node):
                 continue
             net = _s(row.get("Network"))
             proto = _s(row.get("Protocol"))
             nh = _s(row.get("Next_Hop_IP") or row.get("Next_Hop"))
             if net in {"0.0.0.0/0", "default"} and "static" in proto:
-                # Wrong if next-hop is inside campus student/faculty LAN
-                if nh.startswith("10.10.10.") or nh.startswith("10.20.20."):
+                # Wrong if next-hop is inside campus LAN / WLAN ranges
+                bad = (
+                    nh.startswith("192.168.")
+                    or nh.startswith("10.10.")
+                    or nh.startswith("10.20.")
+                    or nh.startswith("11.10.")
+                )
+                if bad:
                     hits.append(
                         RuleHit(
                             rule_id="R3_WRONG_STATIC",
@@ -153,7 +208,7 @@ class RuleEngine:
                             layer="routing",
                             rationale=(
                                 f"Default static route next-hop {nh} points into a campus LAN "
-                                "instead of the border/Internet handoff."
+                                "instead of the ISP / edge handoff."
                             ),
                             evidence_refs=["routes", "reachability"],
                         )
@@ -166,79 +221,48 @@ class RuleEngine:
             "no_route" in _s(r) for r in evidence.traceroute + evidence.reachability
         )
         dst = evidence.probe.dst_ip
-        src = evidence.probe.src_ip
-        # Infer which prefix is missing
-        target_prefix = None
-        device = None
-        if dst.startswith("10.10.10."):
-            target_prefix = "10.10.10.0/24"
-            device = "dist1"
-        elif dst.startswith("10.20.20.") or src.startswith("10.10.10."):
-            # faculty missing if student cannot reach faculty and ACL not deny
-            if "denied" not in blob:
-                target_prefix = "10.20.20.0/24"
-                device = "dist2"
-                # check if faculty prefix appears only as connected on dist2
-                appears_elsewhere = any(
-                    "10.20.20.0/24" in str(r.get("Network")) and str(r.get("Node")) != "dist2"
-                    for r in evidence.routes
-                )
-                if evidence.routes and not appears_elsewhere and any(
-                    "10.20.20.0/24" in str(r.get("Network")) for r in evidence.routes
-                ):
-                    device = "dist2"
-                    target_prefix = "10.20.20.0/24"
-        if dst.startswith("10.10.10.") or (
-            no_route and any("10.10.10.1" in _s(i) for i in evidence.interfaces)
-        ):
-            # student prefix not in OSPF
-            if not any(
-                "10.10.10.0/24" in str(r.get("Network")) and str(r.get("Node")) in {"core1", "dist2"}
-                for r in evidence.routes
-            ):
-                hits.append(
-                    RuleHit(
-                        rule_id="R4_MISSING_ROUTE",
-                        fault_type=FaultType.MISSING_ROUTE,
-                        confidence=0.9,
-                        device="dist1",
-                        object="10.10.10.0/24",
-                        layer="routing",
-                        rationale="Prefix 10.10.10.0/24 is locally present but not learned elsewhere via OSPF.",
-                        evidence_refs=["routes", "traceroute"],
-                    )
-                )
+        target_prefix = _prefix_for_ip(dst)
+        owner = PREFIX_OWNER.get(target_prefix or "", None)
 
-        if no_route and target_prefix == "10.20.20.0/24" and "denied" not in blob:
-            appears_on_core = any(
-                "10.20.20.0/24" in str(r.get("Network")) and str(r.get("Node")) == "core1"
+        if target_prefix and no_route:
+            appears_on_cores = any(
+                target_prefix in str(r.get("Network"))
+                and str(r.get("Node")).lower() in {"core_sw1", "core_sw2", "core1"}
                 for r in evidence.routes
             )
-            if not appears_on_core:
+            locally_present = any(
+                target_prefix in str(r.get("Network"))
+                and str(r.get("Node")).lower() == (owner or "").lower()
+                for r in evidence.routes
+            ) or any(
+                target_prefix.split("/")[0].rsplit(".", 1)[0]
+                in _s(i.get("Primary_Address"))
+                for i in evidence.interfaces
+            )
+            if not appears_on_cores:
                 hits.append(
                     RuleHit(
                         rule_id="R4_MISSING_ROUTE",
                         fault_type=FaultType.MISSING_ROUTE,
-                        confidence=0.88,
-                        device=device or "dist2",
+                        confidence=0.9 if locally_present or owner else 0.7,
+                        device=owner,
                         object=target_prefix,
                         layer="routing",
                         rationale=(
-                            f"No OSPF route to {target_prefix} at core; local interface on advertising "
-                            "router is up — likely missing network statement / passive misconfig."
+                            f"No OSPF route to {target_prefix} at core; likely missing network "
+                            f"statement / advertisement on {owner or 'distribution block'}."
                         ),
-                        evidence_refs=["routes", "interfaces", "traceroute"],
+                        evidence_refs=["routes", "traceroute", "interfaces"],
                     )
                 )
 
-        # Generic no_route without ACL/interface hits
         if no_route and not hits:
             hits.append(
                 RuleHit(
                     rule_id="R4_MISSING_ROUTE_GENERIC",
                     fault_type=FaultType.MISSING_ROUTE,
                     confidence=0.6,
-                    device=device,
+                    device=owner,
                     object=target_prefix or evidence.probe.dst_ip,
                     layer="routing",
                     rationale="Traceroute/reachability shows NO_ROUTE without ACL deny evidence.",
@@ -267,7 +291,6 @@ class RuleEngine:
         return hits
 
     def _rule_reachability_ok(self, evidence: EvidenceBundle, blob: str) -> list[RuleHit]:
-        # Never claim OK if ACL/filter deny or drop/no-route signals are present.
         if any(_s(r.get("Action")) in {"deny", "denied"} for r in evidence.acl_trace):
             return []
         if any(
@@ -296,11 +319,11 @@ class RuleEngine:
     @staticmethod
     def _guess_device(blob: str, candidates: list[str]) -> str | None:
         for c in candidates:
-            if c in blob:
+            if c.lower() in blob:
                 return c
         return None
 
     @staticmethod
     def _extract_node(text: str) -> str | None:
-        m = re.search(r"\b(core1|dist1|dist2|border1)\b", text)
-        return m.group(1) if m else None
+        m = re.search(DEVICE_RE, text, flags=re.IGNORECASE)
+        return m.group(1).lower() if m else None

@@ -1,0 +1,10 @@
+{
+  "hostname": "inet_host",
+  "hostInterfaces": {
+    "eth0": {
+      "name": "eth0",
+      "prefix": "203.0.113.50/24",
+      "gateway": "203.0.113.1"
+    }
+  }
+}

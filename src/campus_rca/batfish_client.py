@@ -97,7 +97,9 @@ class BatfishClient:
         acl = []
         try:
             acl = _df_records(
-                self.bf.q.testFilters(headers=hc, nodes="/dist.*/").answer().frame()
+                self.bf.q.testFilters(
+                    headers=hc, nodes="/core_sw.*|fw.*|dsw_.*/"
+                ).answer().frame()
             )
         except Exception as exc:  # noqa: BLE001
             logger.debug("testFilters unavailable: %s", exc)
@@ -152,11 +154,23 @@ class BatfishClient:
 
     @staticmethod
     def _start_location(probe: ProbeSpec) -> str:
-        # Map host interfaces from campus lab addressing
-        if probe.src_ip.startswith("10.10.10."):
-            return "hostA"
-        if probe.src_ip.startswith("10.20.20."):
-            return "hostC" if probe.src_ip.endswith(".100") else "hostB"
+        # Map campus lab addressing to Batfish host names
+        mapping = (
+            ("192.168.30.", "student_pc"),
+            ("192.168.20.", "acad_pc"),
+            ("192.168.11.", "admin_pc"),
+            ("192.168.80.", "dns_srv"),
+            ("192.168.10.", "mgt_pc"),
+            ("192.168.40.", "lab_pc"),
+            ("11.10.65.", "guest_wifi"),
+            ("12.20.20.", "web_dmz"),
+            ("203.0.113.", "inet_host"),
+            ("10.10.10.", "hostA"),
+            ("10.20.20.", "hostB"),
+        )
+        for prefix, host in mapping:
+            if probe.src_ip.startswith(prefix):
+                return host
         return f"@enter(/.*{probe.src_ip}/)"
 
     @staticmethod
@@ -190,84 +204,110 @@ class BatfishClient:
     ) -> EvidenceBundle:
         """Offline evidence when Batfish is unavailable — aligned to ground-truth scenarios."""
         factory = {
-            "acl_deny_http": self._syn_acl,
-            "missing_ospf_network": self._syn_missing_student,
-            "interface_shutdown": self._syn_iface_down,
-            "wrong_static_route": self._syn_static,
-            "ospf_passive_misconfig": self._syn_missing_faculty,
+            "student_acl_deny_mgt": self._syn_student_acl,
+            "guest_wlan_acl_deny": self._syn_guest_acl,
+            "missing_ospf_students": self._syn_missing_students,
+            "core1_uplink_shutdown": self._syn_core1_uplink,
+            "wrong_default_route_r1": self._syn_bad_default,
+            "ospf_omit_academic": self._syn_omit_academic,
+            "dmz_to_lan_leak_attempt": self._syn_dmz_acl,
+            "fw1_inside_shutdown": self._syn_fw1_down,
+            "core2_student_uplink_down": self._syn_core2_uplink,
+            "missing_ospf_dns_services": self._syn_missing_dns,
+            # legacy ids
+            "acl_deny_http": self._syn_student_acl,
+            "missing_ospf_network": self._syn_missing_students,
+            "interface_shutdown": self._syn_core1_uplink,
+            "wrong_static_route": self._syn_bad_default,
+            "ospf_passive_misconfig": self._syn_omit_academic,
         }
         builder = factory.get(scenario_id, self._syn_generic)
         return builder(probe, symptom)
 
-    def _syn_acl(self, probe: ProbeSpec, symptom: str) -> EvidenceBundle:
+    def _syn_student_acl(self, probe: ProbeSpec, symptom: str) -> EvidenceBundle:
         return EvidenceBundle(
-            scenario_id="acl_deny_http",
+            scenario_id="student_acl_deny_mgt",
             snapshot="synthetic",
             symptom=symptom,
             probe=probe,
-            routes=[
-                {"Node": "dist1", "Network": "10.20.20.0/24", "Protocol": "ospf", "Next_Hop": "core1"},
-                {"Node": "core1", "Network": "10.20.20.0/24", "Protocol": "ospf", "Next_Hop": "dist2"},
-            ],
+            routes=[{"Node": "core_sw1", "Network": "192.168.10.0/24", "Protocol": "connected"}],
             interfaces=[
                 {
-                    "Interface": {"hostname": "dist2", "interface": "GigabitEthernet0/1"},
+                    "Interface": {"hostname": "core_sw1", "interface": "Vlan30"},
                     "Active": True,
-                    "Incoming_Filter_Name": "CAMPUS_EDGE",
+                    "Incoming_Filter_Name": "STUDENT-FILTER",
                 }
             ],
-            traceroute=[
-                {
-                    "Flow": f"{probe.src_ip} -> {probe.dst_ip}:{probe.dst_port}",
-                    "Traces": [{"disposition": "DENIED_IN", "hop": "dist2", "filter": "CAMPUS_EDGE"}],
-                }
-            ],
-            reachability=[{"Flow": "HTTP", "Result": "UNREACHABLE", "Disposition": "DENIED_IN"}],
+            traceroute=[{"Traces": [{"disposition": "DENIED_IN", "hop": "core_sw1"}]}],
+            reachability=[{"Result": "UNREACHABLE", "Disposition": "DENIED_IN"}],
             acl_trace=[
                 {
-                    "Node": "dist2",
-                    "Filter_Name": "CAMPUS_EDGE",
-                    "Flow": f"TCP {probe.src_ip} -> {probe.dst_ip}:80",
+                    "Node": "core_sw1",
+                    "Filter_Name": "STUDENT-FILTER",
+                    "Flow": f"{probe.src_ip}->{probe.dst_ip}",
                     "Action": "DENY",
                 }
             ],
             source="synthetic",
         )
 
-    def _syn_missing_student(self, probe: ProbeSpec, symptom: str) -> EvidenceBundle:
+    def _syn_guest_acl(self, probe: ProbeSpec, symptom: str) -> EvidenceBundle:
         return EvidenceBundle(
-            scenario_id="missing_ospf_network",
+            scenario_id="guest_wlan_acl_deny",
+            snapshot="synthetic",
+            symptom=symptom,
+            probe=probe,
+            interfaces=[
+                {
+                    "Interface": {"hostname": "core_sw1", "interface": "Vlan65"},
+                    "Active": True,
+                    "Incoming_Filter_Name": "GUEST-WLAN-FILTER",
+                }
+            ],
+            traceroute=[{"Traces": [{"disposition": "DENIED_IN", "hop": "core_sw1"}]}],
+            reachability=[{"Result": "UNREACHABLE", "Disposition": "DENIED_IN"}],
+            acl_trace=[
+                {
+                    "Node": "core_sw1",
+                    "Filter_Name": "GUEST-WLAN-FILTER",
+                    "Action": "DENY",
+                }
+            ],
+            source="synthetic",
+        )
+
+    def _syn_missing_students(self, probe: ProbeSpec, symptom: str) -> EvidenceBundle:
+        return EvidenceBundle(
+            scenario_id="missing_ospf_students",
             snapshot="synthetic",
             symptom=symptom,
             probe=probe,
             routes=[
-                {"Node": "dist2", "Network": "10.20.20.0/24", "Protocol": "connected"},
-                {"Node": "core1", "Network": "10.20.20.0/24", "Protocol": "ospf"},
-                # 10.10.10.0/24 missing on core1/dist2
+                {"Node": "dsw_b_student", "Network": "192.168.30.0/24", "Protocol": "connected"},
+                {"Node": "core_sw1", "Network": "192.168.20.0/24", "Protocol": "ospf"},
             ],
             interfaces=[
                 {
-                    "Interface": {"hostname": "dist1", "interface": "GigabitEthernet0/1"},
-                    "Primary_Address": "10.10.10.1/24",
+                    "Interface": {"hostname": "dsw_b_student", "interface": "GigabitEthernet0/2"},
+                    "Primary_Address": "192.168.30.1/24",
                     "Active": True,
                 }
             ],
-            traceroute=[{"Flow": str(probe), "Traces": [{"disposition": "NO_ROUTE", "hop": "core1"}]}],
+            traceroute=[{"Traces": [{"disposition": "NO_ROUTE", "hop": "core_sw1"}]}],
             reachability=[{"Result": "UNREACHABLE", "Disposition": "NO_ROUTE"}],
             source="synthetic",
         )
 
-    def _syn_iface_down(self, probe: ProbeSpec, symptom: str) -> EvidenceBundle:
+    def _syn_core1_uplink(self, probe: ProbeSpec, symptom: str) -> EvidenceBundle:
         return EvidenceBundle(
-            scenario_id="interface_shutdown",
+            scenario_id="core1_uplink_shutdown",
             snapshot="synthetic",
             symptom=symptom,
             probe=probe,
-            routes=[{"Node": "core1", "Network": "10.20.20.0/24", "Protocol": None}],
             interfaces=[
                 {
-                    "Interface": {"hostname": "core1", "interface": "GigabitEthernet0/1"},
-                    "Description": "to-dist2",
+                    "Interface": {"hostname": "core_sw1", "interface": "GigabitEthernet0/1"},
+                    "Description": "to-dsw_b_student",
                     "Active": False,
                     "Admin_Up": False,
                 }
@@ -277,45 +317,118 @@ class BatfishClient:
             source="synthetic",
         )
 
-    def _syn_static(self, probe: ProbeSpec, symptom: str) -> EvidenceBundle:
+    def _syn_bad_default(self, probe: ProbeSpec, symptom: str) -> EvidenceBundle:
         return EvidenceBundle(
-            scenario_id="wrong_static_route",
+            scenario_id="wrong_default_route_r1",
             snapshot="synthetic",
             symptom=symptom,
             probe=probe,
             routes=[
                 {
-                    "Node": "core1",
+                    "Node": "campus_r1",
                     "Network": "0.0.0.0/0",
                     "Protocol": "static",
-                    "Next_Hop_IP": "10.10.10.1",
+                    "Next_Hop_IP": "192.168.30.1",
                 }
             ],
-            interfaces=[{"Interface": {"hostname": "core1", "interface": "GigabitEthernet0/2"}, "Active": True}],
             traceroute=[{"Traces": [{"disposition": "NEIGHBOR_UNREACHABLE_OR_NO_ROUTE"}]}],
-            reachability=[{"Result": "UNREACHABLE", "Destination": "203.0.113.50"}],
+            reachability=[{"Result": "UNREACHABLE"}],
             source="synthetic",
         )
 
-    def _syn_missing_faculty(self, probe: ProbeSpec, symptom: str) -> EvidenceBundle:
+    def _syn_omit_academic(self, probe: ProbeSpec, symptom: str) -> EvidenceBundle:
         return EvidenceBundle(
-            scenario_id="ospf_passive_misconfig",
+            scenario_id="ospf_omit_academic",
             snapshot="synthetic",
             symptom=symptom,
             probe=probe,
             routes=[
-                {"Node": "dist2", "Network": "10.20.20.0/24", "Protocol": "connected"},
-                # missing on core1 / dist1
+                {"Node": "dsw_a_acad", "Network": "192.168.20.0/24", "Protocol": "connected"},
             ],
             interfaces=[
                 {
-                    "Interface": {"hostname": "dist2", "interface": "GigabitEthernet0/1"},
-                    "Primary_Address": "10.20.20.1/24",
+                    "Interface": {"hostname": "dsw_a_acad", "interface": "GigabitEthernet0/2"},
+                    "Primary_Address": "192.168.20.1/24",
                     "Active": True,
-                    "Incoming_Filter_Name": "CAMPUS_EDGE",
                 }
             ],
-            traceroute=[{"Traces": [{"disposition": "NO_ROUTE", "hop": "core1"}]}],
+            traceroute=[{"Traces": [{"disposition": "NO_ROUTE", "hop": "core_sw1"}]}],
+            reachability=[{"Result": "UNREACHABLE", "Disposition": "NO_ROUTE"}],
+            source="synthetic",
+        )
+
+    def _syn_dmz_acl(self, probe: ProbeSpec, symptom: str) -> EvidenceBundle:
+        return EvidenceBundle(
+            scenario_id="dmz_to_lan_leak_attempt",
+            snapshot="synthetic",
+            symptom=symptom,
+            probe=probe,
+            interfaces=[
+                {
+                    "Interface": {"hostname": "fw1", "interface": "GigabitEthernet0/2"},
+                    "Incoming_Filter_Name": "DMZ-IN",
+                    "Active": True,
+                }
+            ],
+            acl_trace=[{"Node": "fw1", "Filter_Name": "DMZ-IN", "Action": "DENY"}],
+            traceroute=[{"Traces": [{"disposition": "DENIED_IN", "hop": "fw1"}]}],
+            reachability=[{"Result": "UNREACHABLE", "Disposition": "DENIED_IN"}],
+            source="synthetic",
+        )
+
+    def _syn_fw1_down(self, probe: ProbeSpec, symptom: str) -> EvidenceBundle:
+        return EvidenceBundle(
+            scenario_id="fw1_inside_shutdown",
+            snapshot="synthetic",
+            symptom=symptom,
+            probe=probe,
+            interfaces=[
+                {
+                    "Interface": {"hostname": "fw1", "interface": "GigabitEthernet0/0"},
+                    "Description": "inside-to-core_sw1",
+                    "Active": False,
+                    "Admin_Up": False,
+                }
+            ],
+            reachability=[{"Result": "UNREACHABLE"}],
+            source="synthetic",
+        )
+
+    def _syn_core2_uplink(self, probe: ProbeSpec, symptom: str) -> EvidenceBundle:
+        return EvidenceBundle(
+            scenario_id="core2_student_uplink_down",
+            snapshot="synthetic",
+            symptom=symptom,
+            probe=probe,
+            interfaces=[
+                {
+                    "Interface": {"hostname": "core_sw2", "interface": "GigabitEthernet0/2"},
+                    "Description": "to-dsw_b_student",
+                    "Active": False,
+                    "Admin_Up": False,
+                }
+            ],
+            reachability=[{"Result": "UNREACHABLE"}],
+            source="synthetic",
+        )
+
+    def _syn_missing_dns(self, probe: ProbeSpec, symptom: str) -> EvidenceBundle:
+        return EvidenceBundle(
+            scenario_id="missing_ospf_dns_services",
+            snapshot="synthetic",
+            symptom=symptom,
+            probe=probe,
+            routes=[
+                {"Node": "dsw_d_dc", "Network": "192.168.80.0/24", "Protocol": "connected"},
+            ],
+            interfaces=[
+                {
+                    "Interface": {"hostname": "dsw_d_dc", "interface": "GigabitEthernet0/2"},
+                    "Primary_Address": "192.168.80.1/24",
+                    "Active": True,
+                }
+            ],
+            traceroute=[{"Traces": [{"disposition": "NO_ROUTE", "hop": "core_sw1"}]}],
             reachability=[{"Result": "UNREACHABLE", "Disposition": "NO_ROUTE"}],
             source="synthetic",
         )

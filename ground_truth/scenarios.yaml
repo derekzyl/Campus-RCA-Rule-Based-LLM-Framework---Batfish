@@ -1,92 +1,188 @@
 # Ground-truth labels for dissertation evaluation (Chapter 3/5)
-# Each scenario has a known injected root cause for objective scoring.
+# Dual-core / dual head-router / distribution-by-block campus lab (10 scenarios).
+# Topology reference: docs/topology/README.md
 
 scenarios:
-  - id: acl_deny_http
-    name: "ACL denies student HTTP to faculty portal"
-    snapshot_dir: configs/scenarios/acl_deny_http
-    symptom: "Students in 10.10.10.0/24 cannot browse http://10.20.20.50 (faculty portal). HTTPS may still work."
+  - id: student_acl_deny_mgt
+    name: "STUDENT-FILTER denies student access to management VLAN"
+    snapshot_dir: configs/scenarios/student_acl_deny_mgt
+    block: "Building B Floor 1 / Core policy"
+    symptom: "Student PC 192.168.30.21 cannot reach management host 192.168.10.51. DNS to 192.168.80.12 may still work."
     probe:
-      src_ip: "10.10.10.10"
-      dst_ip: "10.20.20.50"
+      src_ip: "192.168.30.21"
+      dst_ip: "192.168.10.51"
+      dst_port: null
+      ip_protocol: "ICMP"
+      applications: []
+    ground_truth:
+      fault_type: acl_deny
+      device: core_sw1
+      object: STUDENT-FILTER
+      layer: policy
+      keywords: ["ACL", "STUDENT-FILTER", "deny", "management", "192.168.10.0", "core_sw1"]
+
+  - id: guest_wlan_acl_deny
+    name: "GUEST-WLAN-FILTER blocks guest to campus LAN"
+    snapshot_dir: configs/scenarios/guest_wlan_acl_deny
+    block: "Guest WLAN / Core policy"
+    symptom: "Guest WLAN client 11.10.65.21 cannot reach Admin PC 192.168.11.21 on the wired campus LAN."
+    probe:
+      src_ip: "11.10.65.21"
+      dst_ip: "192.168.11.21"
       dst_port: 80
       ip_protocol: "TCP"
       applications: ["HTTP"]
     ground_truth:
       fault_type: acl_deny
-      device: dist2
-      object: CAMPUS_EDGE
+      device: core_sw1
+      object: GUEST-WLAN-FILTER
       layer: policy
-      keywords: ["ACL", "CAMPUS_EDGE", "deny", "HTTP", "80", "dist2"]
+      keywords: ["GUEST-WLAN-FILTER", "ACL", "deny", "11.10.65.0", "core_sw1"]
 
-  - id: missing_ospf_network
-    name: "Student VLAN not advertised in OSPF"
-    snapshot_dir: configs/scenarios/missing_ospf_network
-    symptom: "Faculty host 10.20.20.100 cannot reach student subnet 10.10.10.0/24. Local gateway on dist1 works."
+  - id: missing_ospf_students
+    name: "Student VLAN omitted from OSPF on Building B DSW"
+    snapshot_dir: configs/scenarios/missing_ospf_students
+    block: "Building B Floor 1 — dsw_b_student"
+    symptom: "Academic host 192.168.20.21 cannot reach student subnet 192.168.30.0/24. Local gateway on dsw_b_student works."
     probe:
-      src_ip: "10.20.20.100"
-      dst_ip: "10.10.10.10"
+      src_ip: "192.168.20.21"
+      dst_ip: "192.168.30.21"
       dst_port: null
       ip_protocol: "ICMP"
       applications: []
     ground_truth:
       fault_type: missing_route
-      device: dist1
-      object: "10.10.10.0/24"
+      device: dsw_b_student
+      object: "192.168.30.0/24"
       layer: routing
-      keywords: ["OSPF", "missing", "10.10.10.0", "dist1", "network statement"]
+      keywords: ["OSPF", "missing", "192.168.30.0", "dsw_b_student", "network statement"]
 
-  - id: interface_shutdown
-    name: "Core uplink to dist2 shut down"
-    snapshot_dir: configs/scenarios/interface_shutdown
-    symptom: "Entire faculty VLAN 10.20.20.0/24 is unreachable from student network and core."
+  - id: core1_uplink_shutdown
+    name: "CORE-SW1 uplink to student distribution shut down"
+    snapshot_dir: configs/scenarios/core1_uplink_shutdown
+    block: "Core ↔ Building B student block"
+    symptom: "Student VLAN reachability degrades when primary core uplink to dsw_b_student is down."
     probe:
-      src_ip: "10.10.10.10"
-      dst_ip: "10.20.20.50"
-      dst_port: 443
-      ip_protocol: "TCP"
-      applications: ["HTTPS"]
+      src_ip: "192.168.20.21"
+      dst_ip: "192.168.30.21"
+      dst_port: null
+      ip_protocol: "ICMP"
+      applications: []
     ground_truth:
       fault_type: interface_down
-      device: core1
+      device: core_sw1
       object: GigabitEthernet0/1
       layer: interface
-      keywords: ["shutdown", "GigabitEthernet0/1", "core1", "interface", "dist2"]
+      keywords: ["shutdown", "GigabitEthernet0/1", "core_sw1", "dsw_b_student", "interface"]
 
-  - id: wrong_static_route
-    name: "Incorrect default route next-hop on core"
-    snapshot_dir: configs/scenarios/wrong_static_route
-    symptom: "Campus hosts cannot reach the Internet (203.0.113.0/24). Internal campus reachability is OK."
+  - id: wrong_default_route_r1
+    name: "Incorrect default route next-hop on campus_r1"
+    snapshot_dir: configs/scenarios/wrong_default_route_r1
+    block: "Head router campus_r1 / ISP edge"
+    symptom: "Campus hosts cannot reach the Internet host 203.0.113.50 via primary head router. Internal campus routing looks up."
     probe:
-      src_ip: "10.10.10.10"
+      src_ip: "192.168.30.21"
       dst_ip: "203.0.113.50"
       dst_port: null
       ip_protocol: "ICMP"
       applications: []
     ground_truth:
       fault_type: wrong_static_route
-      device: core1
+      device: campus_r1
       object: "0.0.0.0/0"
       layer: routing
-      keywords: ["static", "default", "next-hop", "10.10.10.1", "core1"]
+      keywords: ["static", "default", "next-hop", "campus_r1", "203.0.113"]
 
-  - id: ospf_passive_misconfig
-    name: "Faculty VLAN omitted from OSPF advertisement"
-    snapshot_dir: configs/scenarios/ospf_passive_misconfig
-    symptom: "Student hosts cannot reach faculty servers in 10.20.20.0/24. dist2 local interfaces look up."
+  - id: ospf_omit_academic
+    name: "Academic VLAN omitted from OSPF on Building A DSW"
+    snapshot_dir: configs/scenarios/ospf_omit_academic
+    block: "Building A Floor 1 — dsw_a_acad"
+    symptom: "Student hosts cannot reach academic staff subnet 192.168.20.0/24. dsw_a_acad local interfaces look up."
     probe:
-      src_ip: "10.10.10.10"
-      dst_ip: "10.20.20.50"
+      src_ip: "192.168.30.21"
+      dst_ip: "192.168.20.21"
       dst_port: 80
       ip_protocol: "TCP"
       applications: ["HTTP"]
     ground_truth:
       fault_type: missing_route
-      device: dist2
-      object: "10.20.20.0/24"
+      device: dsw_a_acad
+      object: "192.168.20.0/24"
       layer: routing
-      keywords: ["OSPF", "10.20.20.0", "dist2", "missing", "passive"]
+      keywords: ["OSPF", "192.168.20.0", "dsw_a_acad", "missing", "academic"]
+
+  - id: dmz_to_lan_leak_attempt
+    name: "DMZ-IN misconfigured — DNS to internal DNS denied"
+    snapshot_dir: configs/scenarios/dmz_to_lan_leak_attempt
+    block: "DMZ / fw1"
+    symptom: "DMZ web host 12.20.20.20 cannot resolve via internal DNS 192.168.80.12. Other Internet-bound DMZ traffic may still work."
+    probe:
+      src_ip: "12.20.20.20"
+      dst_ip: "192.168.80.12"
+      dst_port: 53
+      ip_protocol: "UDP"
+      applications: ["DNS"]
+    ground_truth:
+      fault_type: acl_deny
+      device: fw1
+      object: DMZ-IN
+      layer: policy
+      keywords: ["DMZ-IN", "ACL", "deny", "DNS", "fw1", "12.20.20"]
+
+  - id: fw1_inside_shutdown
+    name: "FIREWALL-1 inside link to CORE-SW1 shut down"
+    snapshot_dir: configs/scenarios/fw1_inside_shutdown
+    block: "Edge firewall fw1"
+    symptom: "Primary firewall path to campus cores is down; north-south traffic via fw1 fails."
+    probe:
+      src_ip: "192.168.30.21"
+      dst_ip: "203.0.113.50"
+      dst_port: null
+      ip_protocol: "ICMP"
+      applications: []
+    ground_truth:
+      fault_type: interface_down
+      device: fw1
+      object: GigabitEthernet0/0
+      layer: interface
+      keywords: ["shutdown", "fw1", "GigabitEthernet0/0", "core_sw1", "inside"]
+
+  - id: core2_student_uplink_down
+    name: "CORE-SW2 redundant uplink to student DSW shut down"
+    snapshot_dir: configs/scenarios/core2_student_uplink_down
+    block: "Core redundancy ↔ Building B"
+    symptom: "Redundant core path to student block is unavailable (CORE-SW2 Gi0/2 down)."
+    probe:
+      src_ip: "192.168.20.21"
+      dst_ip: "192.168.30.21"
+      dst_port: null
+      ip_protocol: "ICMP"
+      applications: []
+    ground_truth:
+      fault_type: interface_down
+      device: core_sw2
+      object: GigabitEthernet0/2
+      layer: interface
+      keywords: ["shutdown", "core_sw2", "GigabitEthernet0/2", "dsw_b_student", "redundancy"]
+
+  - id: missing_ospf_dns_services
+    name: "Services VLAN omitted from OSPF on DC distribution"
+    snapshot_dir: configs/scenarios/missing_ospf_dns_services
+    block: "Building D Floor 0 — dsw_d_dc"
+    symptom: "Campus clients cannot reach DNS 192.168.80.12. DC local interfaces on dsw_d_dc look up."
+    probe:
+      src_ip: "192.168.30.21"
+      dst_ip: "192.168.80.12"
+      dst_port: 53
+      ip_protocol: "UDP"
+      applications: ["DNS"]
+    ground_truth:
+      fault_type: missing_route
+      device: dsw_d_dc
+      object: "192.168.80.0/24"
+      layer: routing
+      keywords: ["OSPF", "192.168.80.0", "dsw_d_dc", "DNS", "missing"]
 
 baseline:
   snapshot_dir: configs/baseline
-  description: "Known-good campus OSPF + ACL posture for differential analysis"
+  description: "Dual-core, dual head-router, by-block distribution campus OSPF + ACL posture"

@@ -1,0 +1,11 @@
+scenario_id,mode,truth_fault,truth_device,predicted_fault,predicted_device,localisation_correct,keyword_coverage,hallucination_rate,evidence_faithfulness,elapsed_ms
+student_acl_deny_mgt,rule_only,acl_deny,core_sw1,acl_deny,core_sw1,True,0.667,0.0,1.0,0.9
+guest_wlan_acl_deny,rule_only,acl_deny,core_sw1,acl_deny,core_sw1,True,0.8,0.0,1.0,1.0
+missing_ospf_students,rule_only,missing_route,dsw_b_student,missing_route,dsw_b_student,True,1.0,0.0,1.0,0.7
+core1_uplink_shutdown,rule_only,interface_down,core_sw1,interface_down,core_sw1,True,0.6,0.0,1.0,0.5
+wrong_default_route_r1,rule_only,wrong_static_route,campus_r1,wrong_static_route,campus_r1,True,0.8,0.0,1.0,0.5
+ospf_omit_academic,rule_only,missing_route,dsw_a_acad,missing_route,dsw_a_acad,True,0.8,0.0,1.0,0.5
+dmz_to_lan_leak_attempt,rule_only,acl_deny,fw1,acl_deny,fw1,True,0.667,0.0,1.0,0.4
+fw1_inside_shutdown,rule_only,interface_down,fw1,interface_down,fw1,True,0.4,0.0,1.0,0.4
+core2_student_uplink_down,rule_only,interface_down,core_sw2,interface_down,core_sw2,True,0.4,0.0,1.0,0.3
+missing_ospf_dns_services,rule_only,missing_route,dsw_d_dc,missing_route,dsw_d_dc,True,0.8,0.0,1.0,0.4

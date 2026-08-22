@@ -1,0 +1,10 @@
+{
+  "hostname": "lab_pc",
+  "hostInterfaces": {
+    "eth0": {
+      "name": "eth0",
+      "prefix": "192.168.40.21/24",
+      "gateway": "192.168.40.1"
+    }
+  }
+}

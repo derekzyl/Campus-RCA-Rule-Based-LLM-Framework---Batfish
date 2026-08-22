@@ -166,7 +166,12 @@ class LLMBackend(ABC):
         blob = evidence.model_dump_json().lower()
         text = f"{diag.root_cause} {diag.explanation} {diag.device}".lower()
 
-        for device in re.findall(r"\b(core1|dist1|dist2|border1|r\d+|sw\d+)\b", text):
+        for device in re.findall(
+            r"\b(campus_r1|campus_r2|fw1|fw2|core_sw1|core_sw2|dsw_a_admin|dsw_a_acad|"
+            r"dsw_b_lib|dsw_b_student|dsw_c_lab|dsw_d_dc|dsw_d_media|dsw_dmz|"
+            r"core1|dist1|dist2|border1|r\d+|sw\d+)\b",
+            text,
+        ):
             if device not in blob and (not rules or device not in rules.model_dump_json().lower()):
                 flags.append(f"Mentions device '{device}' absent from evidence")
 
@@ -302,25 +307,31 @@ class MockBackend(LLMBackend):
         symptom_section = user.split("Optional raw evidence")[0].lower()
         evidence_section = user.lower()
 
-        if "entire faculty" in symptom_section or (
+        if "management" in symptom_section or "192.168.10" in symptom_section:
+            fault, device, obj = "acl_deny", "core_sw1", "STUDENT-FILTER"
+        elif "guest" in symptom_section or "11.10.65" in symptom_section:
+            fault, device, obj = "acl_deny", "core_sw1", "GUEST-WLAN-FILTER"
+        elif "dmz" in symptom_section or "12.20.20" in symptom_section:
+            fault, device, obj = "acl_deny", "fw1", "DMZ-IN"
+        elif "internet" in symptom_section or "203.0.113" in symptom_section:
+            if "firewall" in symptom_section or "fw1" in symptom_section:
+                fault, device, obj = "interface_down", "fw1", "GigabitEthernet0/0"
+            else:
+                fault, device, obj = "wrong_static_route", "campus_r1", "0.0.0.0/0"
+        elif "redundant" in symptom_section or "core-sw2" in symptom_section or "core_sw2" in symptom_section:
+            fault, device, obj = "interface_down", "core_sw2", "GigabitEthernet0/2"
+        elif "dns" in symptom_section or "192.168.80" in symptom_section:
+            fault, device, obj = "missing_route", "dsw_d_dc", "192.168.80.0/24"
+        elif "academic" in symptom_section or "192.168.20" in symptom_section:
+            fault, device, obj = "missing_route", "dsw_a_acad", "192.168.20.0/24"
+        elif "student" in symptom_section and "uplink" in symptom_section:
+            fault, device, obj = "interface_down", "core_sw1", "GigabitEthernet0/1"
+        elif "student" in symptom_section or "192.168.30" in symptom_section:
+            fault, device, obj = "missing_route", "dsw_b_student", "192.168.30.0/24"
+        elif "entire faculty" in symptom_section or (
             "shutdown" in symptom_section and "uplink" in symptom_section
         ):
-            fault, device, obj = "interface_down", "core1", "GigabitEthernet0/1"
-        elif "internet" in symptom_section or "203.0.113" in symptom_section:
-            fault, device, obj = "wrong_static_route", "core1", "0.0.0.0/0"
-        elif "browse http" in symptom_section or "http://" in symptom_section:
-            fault, device, obj = "acl_deny", "dist2", "CAMPUS_EDGE"
-        elif (
-            "incoming_filter_name" in evidence_section
-            and "campus_edge" in evidence_section
-            and "faculty" in symptom_section
-        ):
-            # Ambiguity trap: ACL present on path → unguided LLM often blames policy
-            fault, device, obj = "acl_deny", "dist2", "CAMPUS_EDGE"
-        elif "student subnet" in symptom_section:
-            fault, device, obj = "missing_route", "dist1", "10.10.10.0/24"
-        elif "faculty" in symptom_section:
-            fault, device, obj = "missing_route", "dist2", "10.20.20.0/24"
+            fault, device, obj = "interface_down", "core_sw1", "GigabitEthernet0/1"
         else:
             fault, device, obj = "unknown", None, None
 

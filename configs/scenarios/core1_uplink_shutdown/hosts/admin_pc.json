@@ -1,0 +1,10 @@
+{
+  "hostname": "admin_pc",
+  "hostInterfaces": {
+    "eth0": {
+      "name": "eth0",
+      "prefix": "192.168.11.21/24",
+      "gateway": "192.168.11.1"
+    }
+  }
+}

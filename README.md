@@ -2,6 +2,7 @@
 
 Prototype for the dissertation *Design and Evaluation of a Rule-Based LLM Framework for Root Cause Analysis in Campus Network Using Batfish*.
 
+Campus lab topology (Packet Tracer aligned): **dual cores**, **dual head routers**, **distribution-by-block**, and **10 labelled scenarios** — see [`docs/topology/README.md`](docs/topology/README.md).
 Hybrid pipeline:
 
 1. **Batfish** — deterministic reachability, routes, interfaces, ACL/filter evidence  

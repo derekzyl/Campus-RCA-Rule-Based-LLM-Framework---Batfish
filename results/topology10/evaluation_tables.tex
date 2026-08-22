@@ -1,0 +1,39 @@
+% Auto-generated from evaluation_report.json — paste into Chapter 5
+
+% --- Aggregate metrics ---
+\begin{table}[ht]
+\centering
+\caption{Aggregate localisation and explanation metrics by mode}
+\label{tab:rca-aggregate}
+\begin{tabular}{lrrrrr}
+\toprule
+Mode & Accuracy & Keyword cov. & Hallucination & Faithfulness & Avg.\ ms \\
+\midrule
+rule\_only & 1.00 & 0.693 & 0.00 & 1.00 & 0.6 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% --- Per-scenario localisation matrix ---
+\begin{table}[ht]
+\centering
+\caption{Per-scenario localisation outcomes (OK/MISS)}
+\label{tab:rca-per-scenario}
+\begin{tabular}{lc}
+\toprule
+Scenario & rule\_only \\
+\midrule
+student\_acl\_deny\_mgt & OK \\
+guest\_wlan\_acl\_deny & OK \\
+missing\_ospf\_students & OK \\
+core1\_uplink\_shutdown & OK \\
+wrong\_default\_route\_r1 & OK \\
+ospf\_omit\_academic & OK \\
+dmz\_to\_lan\_leak\_attempt & OK \\
+fw1\_inside\_shutdown & OK \\
+core2\_student\_uplink\_down & OK \\
+missing\_ospf\_dns\_services & OK \\
+\bottomrule
+\end{tabular}
+\end{table}
+
