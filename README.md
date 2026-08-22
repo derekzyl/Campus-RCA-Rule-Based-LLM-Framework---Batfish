@@ -14,15 +14,7 @@ Evaluation modes: `rule_only` | `llm_only` | `hybrid` (matches RQ1–RQ3).
 ## Campus lab topology
 
 ```
-                 [border1]---- Internet 203.0.113.0/24
-                     |
-                  [core1]
-                  /    \
-             [dist1]  [dist2]--+ CAMPUS_EDGE ACL
-                |        |
-          VLAN10      VLAN20
-        10.10.10.0   10.20.20.0
-          hostA        hostB (portal .50), hostC (.100)
+
 ```
 
 Injected faults (ground truth in `ground_truth/scenarios.yaml`):
