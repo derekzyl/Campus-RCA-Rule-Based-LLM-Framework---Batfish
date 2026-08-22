@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.1"
     ollama_timeout_s: float = 600.0
+    ollama_num_predict: int = 512
     batfish_host: str = "localhost"
     batfish_port: int = 9997
     batfish_network: str = "campus"

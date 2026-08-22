@@ -21,6 +21,10 @@ def _extract_json(text: str) -> dict[str, Any]:
     if not text:
         raise json.JSONDecodeError("Empty response", text, 0)
 
+    # Reasoning models may wrap JSON in think tags
+    text = re.sub(r"<think>[\s\S]*?</think>", "", text, flags=re.IGNORECASE).strip()
+    text = re.sub(r"</?think>", "", text, flags=re.IGNORECASE).strip()
+
     # Strip markdown fences if present
     fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text, re.IGNORECASE)
     if fence:
@@ -212,11 +216,13 @@ class OllamaBackend(LLMBackend):
         model: str,
         temperature: float = 0.0,
         timeout_s: float = 600.0,
+        num_predict: int = 512,
     ):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.temperature = temperature
         self.timeout_s = timeout_s
+        self.num_predict = num_predict
 
     def ping(self) -> dict:
         import httpx
@@ -229,22 +235,32 @@ class OllamaBackend(LLMBackend):
 
     def complete(self, system: str, user: str) -> str:
         import httpx
-        import os
 
         payload = {
             "model": self.model,
             "stream": False,
             "format": "json",
+            "think": False,
             "options": {
                 "temperature": self.temperature,
-                # Keep CPU inference bounded; can be overridden via OLLAMA_NUM_PREDICT env.
-                "num_predict": int(os.environ.get("OLLAMA_NUM_PREDICT", "256")),
+                "num_predict": self.num_predict,
             },
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
         }
+        try:
+            return self._chat(payload)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 400 and "think" in payload:
+                payload.pop("think", None)
+                return self._chat(payload)
+            raise
+
+    def _chat(self, payload: dict[str, Any]) -> str:
+        import httpx
+
         try:
             with httpx.Client(
                 timeout=httpx.Timeout(self.timeout_s, connect=15.0)
@@ -365,5 +381,6 @@ def get_llm_backend(settings=None) -> LLMBackend:
             settings.ollama_model,
             settings.llm_temperature,
             settings.ollama_timeout_s,
+            settings.ollama_num_predict,
         )
     return MockBackend()

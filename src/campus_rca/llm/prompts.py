@@ -4,12 +4,13 @@ import json
 from typing import Any
 
 from campus_rca.models import EvidenceBundle, RuleDiagnosis
+from campus_rca.rules.engine import is_spurious_inactive
 
-SYSTEM_PROMPT = """Network RCA assistant. Respond ONLY with valid compact JSON:
-{"root_cause":"one sentence","fault_type":"acl_deny","device":"dist2","confidence":0.9,"explanation":"2-3 sentences","evidence_used":["routes"],"remediation":["step"],"uncertainties":[]}
-fault_type must be exactly one of: acl_deny, missing_route, interface_down, wrong_static_route, ospf_neighbor, unknown.
-device must be a real hostname from evidence (e.g. core_sw1, dsw_b_student, campus_r1, fw1) or JSON null.
-Ground claims in evidence only. Do not invent devices or routes."""
+SYSTEM_PROMPT = """Reply with JSON only (no markdown, no extra keys):
+{"root_cause":"short","fault_type":"acl_deny","device":"core_sw1","confidence":0.9,"explanation":"one sentence","evidence_used":["acl_trace"],"remediation":["step"],"uncertainties":[]}
+fault_type must be one of: acl_deny, missing_route, interface_down, wrong_static_route, ospf_neighbor, unknown.
+device must be a hostname from evidence (core_sw1, dsw_b_student, campus_r1, fw1, …) or JSON null.
+Fill every field. Ground claims in evidence only."""
 
 
 def compact_evidence(evidence: EvidenceBundle, max_routes: int = 6) -> dict[str, Any]:
@@ -37,6 +38,7 @@ def compact_evidence(evidence: EvidenceBundle, max_routes: int = 6) -> dict[str,
             isinstance(i.get("Interface"), dict)
             and i["Interface"].get("hostname") in routers
         )
+        and not is_spurious_inactive(i)
         and (
             i.get("Active") is False
             or i.get("Admin_Up") is False
@@ -68,6 +70,7 @@ def compact_evidence(evidence: EvidenceBundle, max_routes: int = 6) -> dict[str,
             for i in evidence.interfaces
             if isinstance(i.get("Interface"), dict)
             and i["Interface"].get("hostname") in routers
+            and not is_spurious_inactive(i)
         ][:3],
     }
 

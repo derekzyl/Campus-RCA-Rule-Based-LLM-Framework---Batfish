@@ -52,6 +52,35 @@ DEVICE_RE = (
 )
 
 
+def iface_parts(row: dict[str, Any]) -> tuple[Any, str]:
+    iface = row.get("Interface")
+    if isinstance(iface, dict):
+        return iface.get("hostname"), str(iface.get("interface") or "")
+    return None, str(iface or "")
+
+
+def is_virtual_iface(name: str) -> bool:
+    n = (name or "").lower().replace(" ", "")
+    return n.startswith(("vlan", "loopback", "null"))
+
+
+def is_spurious_inactive(row: dict[str, Any]) -> bool:
+    """Batfish often marks SVIs (and unused ports) Active=false without a shutdown."""
+    admin = row.get("Admin_Up")
+    active = row.get("Active")
+    looks_down = active is False or admin is False
+    if not looks_down:
+        return False
+    _, iname = iface_parts(row)
+    if is_virtual_iface(iname):
+        return admin is not False
+    if active is False and admin is not False:
+        has_addr = bool(row.get("Primary_Address"))
+        desc = str(row.get("Description") or "").strip()
+        return not (has_addr or desc)
+    return False
+
+
 def _s(obj: Any) -> str:
     return str(obj).lower() if obj is not None else ""
 
@@ -159,25 +188,34 @@ class RuleEngine:
     def _rule_interface_down(self, evidence: EvidenceBundle, blob: str) -> list[RuleHit]:
         hits = []
         for row in evidence.interfaces:
-            active = row.get("Active")
-            admin = row.get("Admin_Up")
-            iface = row.get("Interface")
-            hostname = iface.get("hostname") if isinstance(iface, dict) else None
-            iname = iface.get("interface") if isinstance(iface, dict) else str(iface)
-            down = active is False or admin is False or "shutdown" in _s(row.get("Description"))
-            if down and (hostname is None or _is_router(hostname)):
-                hits.append(
-                    RuleHit(
-                        rule_id="R2_INTERFACE_DOWN",
-                        fault_type=FaultType.INTERFACE_DOWN,
-                        confidence=0.95,
-                        device=hostname,
-                        object=iname,
-                        layer="interface",
-                        rationale=f"Interface {iname} on {hostname} is administratively/operationally down.",
-                        evidence_refs=["interfaces"],
-                    )
+            hostname, iname = iface_parts(row)
+            if hostname is not None and not _is_router(hostname):
+                continue
+            admin_down = row.get("Admin_Up") is False
+            oper_down = row.get("Active") is False
+            shutdown_in_desc = "shutdown" in _s(row.get("Description"))
+            if is_spurious_inactive(row) and not shutdown_in_desc:
+                continue
+            if not (admin_down or oper_down or shutdown_in_desc):
+                continue
+            if admin_down and not is_virtual_iface(iname):
+                confidence = 0.96
+            elif admin_down:
+                confidence = 0.86
+            else:
+                confidence = 0.88
+            hits.append(
+                RuleHit(
+                    rule_id="R2_INTERFACE_DOWN",
+                    fault_type=FaultType.INTERFACE_DOWN,
+                    confidence=confidence,
+                    device=hostname,
+                    object=iname,
+                    layer="interface",
+                    rationale=f"Interface {iname} on {hostname} is administratively/operationally down.",
+                    evidence_refs=["interfaces"],
                 )
+            )
         return hits
 
     def _rule_wrong_static(self, evidence: EvidenceBundle, blob: str) -> list[RuleHit]:

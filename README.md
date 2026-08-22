@@ -135,7 +135,7 @@ Notes:
 
 - Local models are **listed and reused** (GUI/launcher ask which to use).  
 - Prompts are **compacted** for CPU.  
-- Tunables: `OLLAMA_MODEL`, `OLLAMA_TIMEOUT_S`, `OLLAMA_NUM_PREDICT`.  
+- Tunables: `OLLAMA_MODEL`, `OLLAMA_TIMEOUT_S`, `OLLAMA_NUM_PREDICT` (use ≥512 so local models can finish JSON). 
 - Hybrid: **rules decide fault/device**; LLM explains only.
 
 ---
