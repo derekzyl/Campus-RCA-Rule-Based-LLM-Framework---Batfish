@@ -92,7 +92,7 @@ Access switches, APs, WLC, IP phones, printers, and most end hosts are **not** d
 | Guest WLAN | 65 | 11.10.65.0/24 | .1 |
 | VoIP | 70 | 192.168.70.0/24 | .1 |
 | Printers/IoT | 75 | 192.168.75.0/24 | .1 |
-| Network Services | 80 | 192.168.80.0/24 | .1 (DNS 192.168.80.12) |
+| Network Services | 80 | 192.168.80.0/24 | .1 (DNS 192.168.80.13) |
 | Internal Servers | 90 | 192.168.90.0/24 | .1 |
 | DMZ | 100 | 12.20.20.0/26 | fw1/fw2 |
 
