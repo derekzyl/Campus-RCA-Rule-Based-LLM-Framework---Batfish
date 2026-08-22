@@ -21,11 +21,7 @@ Injected faults (ground truth in `ground_truth/scenarios.yaml`):
 
 | Scenario | Fault class | Device |
 |---|---|---|
-| `acl_deny_http` | ACL deny (HTTP permit removed) | dist2 |
-| `missing_ospf_network` | Student prefix not in OSPF | dist1 |
-| `interface_shutdown` | Core uplink shut | core1 |
-| `wrong_static_route` | Bad default next-hop | core1 |
-| `ospf_passive_misconfig` | Faculty prefix not advertised | dist2 |
+
 
 ## Quick start (novice — one click)
 
