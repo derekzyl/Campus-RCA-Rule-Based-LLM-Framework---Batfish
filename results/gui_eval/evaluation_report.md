@@ -4,24 +4,39 @@
 
 | Mode | Accuracy | Keyword cov. | Hallucination | Faithfulness | Avg ms |
 |---|---:|---:|---:|---:|---:|
-| hybrid | 0.8 | 0.613 | 0.333 | 0.6 | 158519.2 |
-| rule_only | 0.8 | 0.613 | 0.0 | 1.0 | 2166.4 |
-| llm_only | 0.2 | 0.26 | 0.0 | 0.9 | 133701.4 |
+| hybrid | 0.1 | 0.117 | 0.333 | 0.55 | 207478.5 |
+| rule_only | 0.1 | 0.117 | 0.0 | 1.0 | 3623.7 |
+| llm_only | 0.0 | 0.0 | 0.0 | 0.5 | 210172.2 |
 
 ## Per-scenario
 
-- `hybrid` / `acl_deny_http` [OK] pred=`acl_deny`@dist2 truth=`acl_deny`@dist2
-- `rule_only` / `acl_deny_http` [OK] pred=`acl_deny`@dist2 truth=`acl_deny`@dist2
-- `llm_only` / `acl_deny_http` [OK] pred=`acl_deny`@dist2 truth=`acl_deny`@dist2
-- `hybrid` / `missing_ospf_network` [OK] pred=`missing_route`@dist1 truth=`missing_route`@dist1
-- `rule_only` / `missing_ospf_network` [OK] pred=`missing_route`@dist1 truth=`missing_route`@dist1
-- `llm_only` / `missing_ospf_network` [MISS] pred=`acl_deny`@dist1 truth=`missing_route`@dist1
-- `hybrid` / `interface_shutdown` [OK] pred=`interface_down`@core1 truth=`interface_down`@core1
-- `rule_only` / `interface_shutdown` [OK] pred=`interface_down`@core1 truth=`interface_down`@core1
-- `llm_only` / `interface_shutdown` [MISS] pred=`acl_deny`@dist2 truth=`interface_down`@core1
-- `hybrid` / `wrong_static_route` [OK] pred=`wrong_static_route`@core1 truth=`wrong_static_route`@core1
-- `rule_only` / `wrong_static_route` [OK] pred=`wrong_static_route`@core1 truth=`wrong_static_route`@core1
-- `llm_only` / `wrong_static_route` [MISS] pred=`acl_deny`@dist2 truth=`wrong_static_route`@core1
-- `hybrid` / `ospf_passive_misconfig` [MISS] pred=`reachability_ok`@None truth=`missing_route`@dist2
-- `rule_only` / `ospf_passive_misconfig` [MISS] pred=`reachability_ok`@None truth=`missing_route`@dist2
-- `llm_only` / `ospf_passive_misconfig` [MISS] pred=`acl_deny`@dist2 truth=`missing_route`@dist2
+- `hybrid` / `student_acl_deny_mgt` [MISS] pred=`interface_down`@core_sw1 truth=`acl_deny`@core_sw1
+- `rule_only` / `student_acl_deny_mgt` [MISS] pred=`interface_down`@core_sw1 truth=`acl_deny`@core_sw1
+- `llm_only` / `student_acl_deny_mgt` [MISS] pred=`unknown`@None truth=`acl_deny`@core_sw1
+- `hybrid` / `guest_wlan_acl_deny` [MISS] pred=`interface_down`@core_sw1 truth=`acl_deny`@core_sw1
+- `rule_only` / `guest_wlan_acl_deny` [MISS] pred=`interface_down`@core_sw1 truth=`acl_deny`@core_sw1
+- `llm_only` / `guest_wlan_acl_deny` [MISS] pred=`unknown`@None truth=`acl_deny`@core_sw1
+- `hybrid` / `missing_ospf_students` [MISS] pred=`interface_down`@core_sw1 truth=`missing_route`@dsw_b_student
+- `rule_only` / `missing_ospf_students` [MISS] pred=`interface_down`@core_sw1 truth=`missing_route`@dsw_b_student
+- `llm_only` / `missing_ospf_students` [MISS] pred=`unknown`@None truth=`missing_route`@dsw_b_student
+- `hybrid` / `core1_uplink_shutdown` [OK] pred=`interface_down`@core_sw1 truth=`interface_down`@core_sw1
+- `rule_only` / `core1_uplink_shutdown` [OK] pred=`interface_down`@core_sw1 truth=`interface_down`@core_sw1
+- `llm_only` / `core1_uplink_shutdown` [MISS] pred=`unknown`@None truth=`interface_down`@core_sw1
+- `hybrid` / `wrong_default_route_r1` [MISS] pred=`interface_down`@core_sw1 truth=`wrong_static_route`@campus_r1
+- `rule_only` / `wrong_default_route_r1` [MISS] pred=`interface_down`@core_sw1 truth=`wrong_static_route`@campus_r1
+- `llm_only` / `wrong_default_route_r1` [MISS] pred=`unknown`@None truth=`wrong_static_route`@campus_r1
+- `hybrid` / `ospf_omit_academic` [MISS] pred=`interface_down`@core_sw1 truth=`missing_route`@dsw_a_acad
+- `rule_only` / `ospf_omit_academic` [MISS] pred=`interface_down`@core_sw1 truth=`missing_route`@dsw_a_acad
+- `llm_only` / `ospf_omit_academic` [MISS] pred=`unknown`@None truth=`missing_route`@dsw_a_acad
+- `hybrid` / `dmz_to_lan_leak_attempt` [MISS] pred=`interface_down`@core_sw1 truth=`acl_deny`@fw1
+- `rule_only` / `dmz_to_lan_leak_attempt` [MISS] pred=`interface_down`@core_sw1 truth=`acl_deny`@fw1
+- `llm_only` / `dmz_to_lan_leak_attempt` [MISS] pred=`unknown`@None truth=`acl_deny`@fw1
+- `hybrid` / `fw1_inside_shutdown` [MISS] pred=`interface_down`@core_sw1 truth=`interface_down`@fw1
+- `rule_only` / `fw1_inside_shutdown` [MISS] pred=`interface_down`@core_sw1 truth=`interface_down`@fw1
+- `llm_only` / `fw1_inside_shutdown` [MISS] pred=`unknown`@None truth=`interface_down`@fw1
+- `hybrid` / `core2_student_uplink_down` [MISS] pred=`interface_down`@core_sw1 truth=`interface_down`@core_sw2
+- `rule_only` / `core2_student_uplink_down` [MISS] pred=`interface_down`@core_sw1 truth=`interface_down`@core_sw2
+- `llm_only` / `core2_student_uplink_down` [MISS] pred=`unknown`@None truth=`interface_down`@core_sw2
+- `hybrid` / `missing_ospf_dns_services` [MISS] pred=`interface_down`@core_sw1 truth=`missing_route`@dsw_d_dc
+- `rule_only` / `missing_ospf_dns_services` [MISS] pred=`interface_down`@core_sw1 truth=`missing_route`@dsw_d_dc
+- `llm_only` / `missing_ospf_dns_services` [MISS] pred=`unknown`@None truth=`missing_route`@dsw_d_dc

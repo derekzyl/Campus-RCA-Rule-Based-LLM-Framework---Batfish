@@ -1,4 +1,4 @@
 mode,n,accuracy,avg_keyword_coverage,avg_hallucination_rate,avg_evidence_faithfulness,avg_elapsed_ms
-rule_only,5,0.8,0.613,0.0,1.0,2166.4
-llm_only,5,0.2,0.26,0.0,0.9,133701.4
-hybrid,5,0.8,0.613,0.333,0.6,158519.2
+rule_only,10,0.1,0.117,0.0,1.0,3623.7
+llm_only,10,0.0,0.0,0.0,0.5,210172.2
+hybrid,10,0.1,0.117,0.333,0.55,207478.5
