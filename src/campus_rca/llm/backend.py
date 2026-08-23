@@ -209,32 +209,25 @@ class LLMBackend(ABC):
         except (json.JSONDecodeError, ValueError, TypeError):
             return _fallback_diagnosis(raw, rules)
 
-        device = data.get("device")
-        if isinstance(device, str) and device.strip().lower() in {
-            "null",
-            "none",
-            "hostname or null",
-            "hostname",
-            "n/a",
-        }:
-            device = None
-
         if not data.get("fault_type") and not data.get("device"):
             return _fallback_diagnosis(raw or "Empty LLM JSON", rules)
 
-        fault = _normalize_fault(str(data.get("fault_type", "unknown")))
+        fault = _normalize_fault(_as_str(data.get("fault_type", "unknown")))
 
-        diag = LLMDiagnosis(
-            root_cause=str(data.get("root_cause", "")),
-            fault_type=fault,
-            device=device,
-            confidence=float(data.get("confidence", 0.5) or 0.5),
-            explanation=str(data.get("explanation", "")),
-            evidence_used=list(data.get("evidence_used") or []),
-            remediation=list(data.get("remediation") or []),
-            uncertainties=list(data.get("uncertainties") or []),
-            raw_text=raw,
-        )
+        try:
+            diag = LLMDiagnosis(
+                root_cause=_as_str(data.get("root_cause")),
+                fault_type=fault,
+                device=_as_device(data.get("device")),
+                confidence=_as_float(data.get("confidence"), 0.5),
+                explanation=_as_str(data.get("explanation")),
+                evidence_used=_as_str_list(data.get("evidence_used")),
+                remediation=_as_str_list(data.get("remediation")),
+                uncertainties=_as_str_list(data.get("uncertainties")),
+                raw_text=raw,
+            )
+        except Exception:  # noqa: BLE001
+            return _fallback_diagnosis(raw, rules)
         diag.hallucinated_claims = self._flag_hallucinations(diag, evidence, rules, grounded)
         return diag
 
@@ -297,6 +290,55 @@ _FAULT_TYPES = (
     "acl_deny",
     "unknown",
 )
+
+
+def _as_str(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        for key in ("rule_id", "rationale", "filter", "explanation", "root_cause"):
+            if value.get(key):
+                return str(value[key])
+        return json.dumps(value, default=str)[:240]
+    if isinstance(value, list):
+        return "; ".join(_as_str(v) for v in value if v is not None)
+    return str(value)
+
+
+def _as_device(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        value = value.get("device") or value.get("hostname") or value.get("Node")
+    text = _as_str(value).strip()
+    if not text or text.lower() in {"null", "none", "hostname or null", "hostname", "n/a"}:
+        return None
+    return text
+
+
+def _as_float(value: Any, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _as_str_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if not isinstance(value, list):
+        text = _as_str(value)
+        return [text] if text else []
+    out: list[str] = []
+    for item in value:
+        text = _as_str(item).strip()
+        if text:
+            out.append(text)
+    return out
 
 
 def _normalize_fault(raw: str) -> str:
