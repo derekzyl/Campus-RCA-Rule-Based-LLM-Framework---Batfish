@@ -3,10 +3,10 @@
     "hybrid": {
       "n": 10,
       "accuracy": 1.0,
-      "avg_keyword_coverage": 0.78,
-      "avg_hallucination_rate": 0.333,
-      "avg_evidence_faithfulness": 0.9,
-      "avg_elapsed_ms": 9213.4
+      "avg_keyword_coverage": 0.747,
+      "avg_hallucination_rate": 0.0,
+      "avg_evidence_faithfulness": 0.8,
+      "avg_elapsed_ms": 62936.7
     },
     "rule_only": {
       "n": 10,
@@ -14,15 +14,15 @@
       "avg_keyword_coverage": 0.78,
       "avg_hallucination_rate": 0.0,
       "avg_evidence_faithfulness": 1.0,
-      "avg_elapsed_ms": 4464.5
+      "avg_elapsed_ms": 3035.1
     },
     "llm_only": {
       "n": 10,
-      "accuracy": 0.0,
-      "avg_keyword_coverage": 0.0,
-      "avg_hallucination_rate": 0.333,
-      "avg_evidence_faithfulness": 0.5,
-      "avg_elapsed_ms": 9339.8
+      "accuracy": 0.9,
+      "avg_keyword_coverage": 0.76,
+      "avg_hallucination_rate": 0.0,
+      "avg_evidence_faithfulness": 0.45,
+      "avg_elapsed_ms": 17158.8
     }
   },
   "rows": [
@@ -34,11 +34,11 @@
       "truth_fault": "acl_deny",
       "truth_device": "core_sw1",
       "localisation_correct": true,
-      "keyword_coverage": 1.0,
-      "hallucination_rate": 0.333,
-      "evidence_faithfulness": 0.667,
-      "elapsed_ms": 6942.3,
-      "explanation": "STUDENT-FILTER (VLAN 30 in, both cores) denies student 192.168.30.0/24 to management 192.168.10.0/24."
+      "keyword_coverage": 0.667,
+      "hallucination_rate": 0.0,
+      "evidence_faithfulness": 0.5,
+      "elapsed_ms": 55677.4,
+      "explanation": "Student PC 192.168.30.21 cannot reach management host 192.168.10.51 due to a deny on VLAN 30 in both core_sw1 and core_sw2."
     },
     {
       "scenario_id": "student_acl_deny_mgt",
@@ -51,22 +51,22 @@
       "keyword_coverage": 1.0,
       "hallucination_rate": 0.0,
       "evidence_faithfulness": 1.0,
-      "elapsed_ms": 3539.1,
+      "elapsed_ms": 2985.7,
       "explanation": "STUDENT-FILTER (VLAN 30 in, both cores) denies student 192.168.30.0/24 to management 192.168.10.0/24."
     },
     {
       "scenario_id": "student_acl_deny_mgt",
       "mode": "llm_only",
-      "predicted_fault": "unknown",
-      "predicted_device": null,
+      "predicted_fault": "acl_deny",
+      "predicted_device": "core_sw1",
       "truth_fault": "acl_deny",
       "truth_device": "core_sw1",
-      "localisation_correct": false,
-      "keyword_coverage": 0.0,
-      "hallucination_rate": 0.333,
+      "localisation_correct": true,
+      "keyword_coverage": 1.0,
+      "hallucination_rate": 0.0,
       "evidence_faithfulness": 0.5,
-      "elapsed_ms": 24648.3,
-      "explanation": "LLM error: Gemini model 'gemini-2.0-flash' unavailable (HTTP 404). Set GEMINI_MODEL=gemini-2.0-flash and retry."
+      "elapsed_ms": 15464.7,
+      "explanation": "STUDENT-FILTER (VLAN 30 in, both cores) denies student 192.168.30.0/24 to management 192.168.10.0/24."
     },
     {
       "scenario_id": "guest_wlan_acl_deny",
@@ -77,9 +77,9 @@
       "truth_device": "core_sw1",
       "localisation_correct": true,
       "keyword_coverage": 1.0,
-      "hallucination_rate": 0.333,
-      "evidence_faithfulness": 0.667,
-      "elapsed_ms": 20297.0,
+      "hallucination_rate": 0.0,
+      "evidence_faithfulness": 1.0,
+      "elapsed_ms": 75328.9,
       "explanation": "GUEST-WLAN-FILTER (VLAN 65 in, both cores) denies guest 11.10.65.0/24 to wired campus LAN / staff WLAN / student WLAN."
     },
     {
@@ -93,22 +93,22 @@
       "keyword_coverage": 1.0,
       "hallucination_rate": 0.0,
       "evidence_faithfulness": 1.0,
-      "elapsed_ms": 3353.4,
+      "elapsed_ms": 2942.4,
       "explanation": "GUEST-WLAN-FILTER (VLAN 65 in, both cores) denies guest 11.10.65.0/24 to wired campus LAN / staff WLAN / student WLAN."
     },
     {
       "scenario_id": "guest_wlan_acl_deny",
       "mode": "llm_only",
-      "predicted_fault": "unknown",
-      "predicted_device": null,
+      "predicted_fault": "acl_deny",
+      "predicted_device": "core_sw1",
       "truth_fault": "acl_deny",
       "truth_device": "core_sw1",
-      "localisation_correct": false,
-      "keyword_coverage": 0.0,
-      "hallucination_rate": 0.333,
+      "localisation_correct": true,
+      "keyword_coverage": 1.0,
+      "hallucination_rate": 0.0,
       "evidence_faithfulness": 0.5,
-      "elapsed_ms": 7154.9,
-      "explanation": "LLM error: Gemini model 'gemini-2.0-flash' unavailable (HTTP 404). Set GEMINI_MODEL=gemini-2.0-flash and retry."
+      "elapsed_ms": 15833.8,
+      "explanation": "GUEST-WLAN-FILTER (VLAN 65 in, both cores) denies guest 11.10.65.0/24 to wired campus LAN / staff WLAN / student WLAN."
     },
     {
       "scenario_id": "missing_ospf_students",
@@ -119,9 +119,9 @@
       "truth_device": "dsw_b_student",
       "localisation_correct": true,
       "keyword_coverage": 1.0,
-      "hallucination_rate": 0.333,
+      "hallucination_rate": 0.0,
       "evidence_faithfulness": 1.0,
-      "elapsed_ms": 10410.4,
+      "elapsed_ms": 68987.4,
       "explanation": "No OSPF route to 192.168.30.0/24 at core; likely missing network statement / advertisement on dsw_b_student."
     },
     {
@@ -135,22 +135,22 @@
       "keyword_coverage": 1.0,
       "hallucination_rate": 0.0,
       "evidence_faithfulness": 1.0,
-      "elapsed_ms": 3511.7,
+      "elapsed_ms": 2792.2,
       "explanation": "No OSPF route to 192.168.30.0/24 at core; likely missing network statement / advertisement on dsw_b_student."
     },
     {
       "scenario_id": "missing_ospf_students",
       "mode": "llm_only",
-      "predicted_fault": "unknown",
-      "predicted_device": null,
+      "predicted_fault": "missing_route",
+      "predicted_device": "dsw_b_student",
       "truth_fault": "missing_route",
       "truth_device": "dsw_b_student",
-      "localisation_correct": false,
-      "keyword_coverage": 0.0,
-      "hallucination_rate": 0.333,
+      "localisation_correct": true,
+      "keyword_coverage": 1.0,
+      "hallucination_rate": 0.0,
       "evidence_faithfulness": 0.5,
-      "elapsed_ms": 6432.9,
-      "explanation": "LLM error: Gemini model 'gemini-2.0-flash' unavailable (HTTP 404). Set GEMINI_MODEL=gemini-2.0-flash and retry."
+      "elapsed_ms": 12644.6,
+      "explanation": "No OSPF route to 192.168.30.0/24 at core; likely missing network statement / advertisement on dsw_b_student."
     },
     {
       "scenario_id": "core1_uplink_shutdown",
@@ -161,9 +161,9 @@
       "truth_device": "core_sw1",
       "localisation_correct": true,
       "keyword_coverage": 0.6,
-      "hallucination_rate": 0.333,
-      "evidence_faithfulness": 1.0,
-      "elapsed_ms": 11746.2,
+      "hallucination_rate": 0.0,
+      "evidence_faithfulness": 0.0,
+      "elapsed_ms": 58034.6,
       "explanation": "Interface GigabitEthernet0/1 on core_sw1 is administratively/operationally down."
     },
     {
@@ -177,22 +177,22 @@
       "keyword_coverage": 0.6,
       "hallucination_rate": 0.0,
       "evidence_faithfulness": 1.0,
-      "elapsed_ms": 5082.2,
+      "elapsed_ms": 3269.9,
       "explanation": "Interface GigabitEthernet0/1 on core_sw1 is administratively/operationally down."
     },
     {
       "scenario_id": "core1_uplink_shutdown",
       "mode": "llm_only",
-      "predicted_fault": "unknown",
-      "predicted_device": null,
+      "predicted_fault": "interface_down",
+      "predicted_device": "core_sw1",
       "truth_fault": "interface_down",
       "truth_device": "core_sw1",
-      "localisation_correct": false,
-      "keyword_coverage": 0.0,
-      "hallucination_rate": 0.333,
+      "localisation_correct": true,
+      "keyword_coverage": 0.6,
+      "hallucination_rate": 0.0,
       "evidence_faithfulness": 0.5,
-      "elapsed_ms": 10303.6,
-      "explanation": "LLM error: Gemini model 'gemini-2.0-flash' unavailable (HTTP 404). Set GEMINI_MODEL=gemini-2.0-flash and retry."
+      "elapsed_ms": 13961.7,
+      "explanation": "Interface GigabitEthernet0/1 on core_sw1 is administratively down."
     },
     {
       "scenario_id": "wrong_default_route_r1",
@@ -203,9 +203,9 @@
       "truth_device": "campus_r1",
       "localisation_correct": true,
       "keyword_coverage": 0.8,
-      "hallucination_rate": 0.333,
+      "hallucination_rate": 0.0,
       "evidence_faithfulness": 1.0,
-      "elapsed_ms": 7535.1,
+      "elapsed_ms": 66012.4,
       "explanation": "Default static route next-hop 192.168.30.1 points into a campus LAN instead of the ISP / edge handoff."
     },
     {
@@ -219,22 +219,22 @@
       "keyword_coverage": 0.8,
       "hallucination_rate": 0.0,
       "evidence_faithfulness": 1.0,
-      "elapsed_ms": 4534.5,
+      "elapsed_ms": 2921.0,
       "explanation": "Default static route next-hop 192.168.30.1 points into a campus LAN instead of the ISP / edge handoff."
     },
     {
       "scenario_id": "wrong_default_route_r1",
       "mode": "llm_only",
-      "predicted_fault": "unknown",
-      "predicted_device": null,
+      "predicted_fault": "wrong_static_route",
+      "predicted_device": "campus_r1",
       "truth_fault": "wrong_static_route",
       "truth_device": "campus_r1",
-      "localisation_correct": false,
-      "keyword_coverage": 0.0,
-      "hallucination_rate": 0.333,
+      "localisation_correct": true,
+      "keyword_coverage": 0.8,
+      "hallucination_rate": 0.0,
       "evidence_faithfulness": 0.5,
-      "elapsed_ms": 7255.5,
-      "explanation": "LLM error: Gemini model 'gemini-2.0-flash' unavailable (HTTP 404). Set GEMINI_MODEL=gemini-2.0-flash and retry."
+      "elapsed_ms": 13370.1,
+      "explanation": "Default static route next-hop 192.168.30.1 points into a campus LAN instead of the ISP / edge handoff."
     },
     {
       "scenario_id": "ospf_omit_academic",
@@ -245,9 +245,9 @@
       "truth_device": "dsw_a_acad",
       "localisation_correct": true,
       "keyword_coverage": 0.8,
-      "hallucination_rate": 0.333,
+      "hallucination_rate": 0.0,
       "evidence_faithfulness": 1.0,
-      "elapsed_ms": 7446.7,
+      "elapsed_ms": 69517.2,
       "explanation": "No OSPF route to 192.168.20.0/24 at core; likely missing network statement / advertisement on dsw_a_acad."
     },
     {
@@ -261,22 +261,22 @@
       "keyword_coverage": 0.8,
       "hallucination_rate": 0.0,
       "evidence_faithfulness": 1.0,
-      "elapsed_ms": 4941.6,
+      "elapsed_ms": 3428.1,
       "explanation": "No OSPF route to 192.168.20.0/24 at core; likely missing network statement / advertisement on dsw_a_acad."
     },
     {
       "scenario_id": "ospf_omit_academic",
       "mode": "llm_only",
-      "predicted_fault": "unknown",
-      "predicted_device": null,
+      "predicted_fault": "missing_route",
+      "predicted_device": "dsw_a_acad",
       "truth_fault": "missing_route",
       "truth_device": "dsw_a_acad",
-      "localisation_correct": false,
-      "keyword_coverage": 0.0,
-      "hallucination_rate": 0.333,
+      "localisation_correct": true,
+      "keyword_coverage": 0.8,
+      "hallucination_rate": 0.0,
       "evidence_faithfulness": 0.5,
-      "elapsed_ms": 7135.3,
-      "explanation": "LLM error: Gemini model 'gemini-2.0-flash' unavailable (HTTP 404). Set GEMINI_MODEL=gemini-2.0-flash and retry."
+      "elapsed_ms": 13094.1,
+      "explanation": "No OSPF route to 192.168.20.0/24 at core; likely missing network statement / advertisement on dsw_a_acad."
     },
     {
       "scenario_id": "dmz_to_lan_leak_attempt",
@@ -287,9 +287,9 @@
       "truth_device": "fw1",
       "localisation_correct": true,
       "keyword_coverage": 1.0,
-      "hallucination_rate": 0.333,
-      "evidence_faithfulness": 0.667,
-      "elapsed_ms": 7154.8,
+      "hallucination_rate": 0.0,
+      "evidence_faithfulness": 1.0,
+      "elapsed_ms": 74094.3,
       "explanation": "DMZ-IN on fw1 denies DMZ 12.20.20.0/26 to internal LAN/WLAN; only DNS to 192.168.80.13 is permitted."
     },
     {
@@ -303,22 +303,22 @@
       "keyword_coverage": 1.0,
       "hallucination_rate": 0.0,
       "evidence_faithfulness": 1.0,
-      "elapsed_ms": 5673.1,
+      "elapsed_ms": 3482.0,
       "explanation": "DMZ-IN on fw1 denies DMZ 12.20.20.0/26 to internal LAN/WLAN; only DNS to 192.168.80.13 is permitted."
     },
     {
       "scenario_id": "dmz_to_lan_leak_attempt",
       "mode": "llm_only",
-      "predicted_fault": "unknown",
-      "predicted_device": null,
+      "predicted_fault": "acl_deny",
+      "predicted_device": "fw1",
       "truth_fault": "acl_deny",
       "truth_device": "fw1",
-      "localisation_correct": false,
-      "keyword_coverage": 0.0,
-      "hallucination_rate": 0.333,
+      "localisation_correct": true,
+      "keyword_coverage": 1.0,
+      "hallucination_rate": 0.0,
       "evidence_faithfulness": 0.5,
-      "elapsed_ms": 8848.6,
-      "explanation": "LLM error: Gemini model 'gemini-2.0-flash' unavailable (HTTP 404). Set GEMINI_MODEL=gemini-2.0-flash and retry."
+      "elapsed_ms": 22185.6,
+      "explanation": "DMZ-IN on fw1 denies DMZ 12.20.20.0/26 to internal LAN/WLAN; only DNS to 192.168.80.13 is permitted."
     },
     {
       "scenario_id": "fw1_inside_shutdown",
@@ -329,9 +329,9 @@
       "truth_device": "fw1",
       "localisation_correct": true,
       "keyword_coverage": 0.4,
-      "hallucination_rate": 0.333,
-      "evidence_faithfulness": 1.0,
-      "elapsed_ms": 6229.5,
+      "hallucination_rate": 0.0,
+      "evidence_faithfulness": 0.5,
+      "elapsed_ms": 33495.7,
       "explanation": "Interface GigabitEthernet0/0 on fw1 is administratively/operationally down."
     },
     {
@@ -345,22 +345,22 @@
       "keyword_coverage": 0.4,
       "hallucination_rate": 0.0,
       "evidence_faithfulness": 1.0,
-      "elapsed_ms": 4695.2,
+      "elapsed_ms": 2809.8,
       "explanation": "Interface GigabitEthernet0/0 on fw1 is administratively/operationally down."
     },
     {
       "scenario_id": "fw1_inside_shutdown",
       "mode": "llm_only",
-      "predicted_fault": "unknown",
-      "predicted_device": null,
+      "predicted_fault": "interface_down",
+      "predicted_device": "fw1",
       "truth_fault": "interface_down",
       "truth_device": "fw1",
-      "localisation_correct": false,
-      "keyword_coverage": 0.0,
-      "hallucination_rate": 0.333,
+      "localisation_correct": true,
+      "keyword_coverage": 0.4,
+      "hallucination_rate": 0.0,
       "evidence_faithfulness": 0.5,
-      "elapsed_ms": 6706.0,
-      "explanation": "LLM error: Gemini model 'gemini-2.0-flash' unavailable (HTTP 404). Set GEMINI_MODEL=gemini-2.0-flash and retry."
+      "elapsed_ms": 15585.0,
+      "explanation": "Interface GigabitEthernet0/0 on fw1 is administratively down."
     },
     {
       "scenario_id": "core2_student_uplink_down",
@@ -371,9 +371,9 @@
       "truth_device": "core_sw2",
       "localisation_correct": true,
       "keyword_coverage": 0.4,
-      "hallucination_rate": 0.333,
+      "hallucination_rate": 0.0,
       "evidence_faithfulness": 1.0,
-      "elapsed_ms": 7385.6,
+      "elapsed_ms": 60164.5,
       "explanation": "Interface GigabitEthernet0/2 on core_sw2 is administratively/operationally down."
     },
     {
@@ -387,22 +387,22 @@
       "keyword_coverage": 0.4,
       "hallucination_rate": 0.0,
       "evidence_faithfulness": 1.0,
-      "elapsed_ms": 4798.2,
+      "elapsed_ms": 2763.6,
       "explanation": "Interface GigabitEthernet0/2 on core_sw2 is administratively/operationally down."
     },
     {
       "scenario_id": "core2_student_uplink_down",
       "mode": "llm_only",
       "predicted_fault": "unknown",
-      "predicted_device": null,
+      "predicted_device": "core_sw2",
       "truth_fault": "interface_down",
       "truth_device": "core_sw2",
       "localisation_correct": false,
-      "keyword_coverage": 0.0,
-      "hallucination_rate": 0.333,
-      "evidence_faithfulness": 0.5,
-      "elapsed_ms": 7303.5,
-      "explanation": "LLM error: Gemini model 'gemini-2.0-flash' unavailable (HTTP 404). Set GEMINI_MODEL=gemini-2.0-flash and retry."
+      "keyword_coverage": 0.2,
+      "hallucination_rate": 0.0,
+      "evidence_faithfulness": 0.0,
+      "elapsed_ms": 36292.8,
+      "explanation": "The core switch at campus_r1 is experiencing a physical failure, causing the interface to be down and preventing it from forwarding traffic correctly."
     },
     {
       "scenario_id": "missing_ospf_dns_services",
@@ -413,9 +413,9 @@
       "truth_device": "dsw_d_dc",
       "localisation_correct": true,
       "keyword_coverage": 0.8,
-      "hallucination_rate": 0.333,
+      "hallucination_rate": 0.0,
       "evidence_faithfulness": 1.0,
-      "elapsed_ms": 6986.2,
+      "elapsed_ms": 68054.2,
       "explanation": "No OSPF route to 192.168.80.0/24 at core; likely missing network statement / advertisement on dsw_d_dc."
     },
     {
@@ -429,22 +429,22 @@
       "keyword_coverage": 0.8,
       "hallucination_rate": 0.0,
       "evidence_faithfulness": 1.0,
-      "elapsed_ms": 4516.1,
+      "elapsed_ms": 2956.3,
       "explanation": "No OSPF route to 192.168.80.0/24 at core; likely missing network statement / advertisement on dsw_d_dc."
     },
     {
       "scenario_id": "missing_ospf_dns_services",
       "mode": "llm_only",
-      "predicted_fault": "unknown",
-      "predicted_device": null,
+      "predicted_fault": "missing_route",
+      "predicted_device": "dsw_d_dc",
       "truth_fault": "missing_route",
       "truth_device": "dsw_d_dc",
-      "localisation_correct": false,
-      "keyword_coverage": 0.0,
-      "hallucination_rate": 0.333,
+      "localisation_correct": true,
+      "keyword_coverage": 0.8,
+      "hallucination_rate": 0.0,
       "evidence_faithfulness": 0.5,
-      "elapsed_ms": 7609.3,
-      "explanation": "LLM error: Gemini model 'gemini-2.0-flash' unavailable (HTTP 404). Set GEMINI_MODEL=gemini-2.0-flash and retry."
+      "elapsed_ms": 13155.6,
+      "explanation": "No OSPF route to 192.168.80.0/24 at core; likely missing network statement / advertisement on dsw_d_dc."
     }
   ]
 }

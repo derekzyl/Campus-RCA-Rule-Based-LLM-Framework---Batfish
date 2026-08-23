@@ -10,6 +10,8 @@ from campus_rca.llm.prompts import (
     SYSTEM_PROMPT,
     build_hybrid_user_prompt,
     build_llm_only_user_prompt,
+    classify_from_cues,
+    classification_cues,
     evidence_to_prompt_json,
     rules_to_prompt_json,
 )
@@ -185,17 +187,9 @@ class LLMBackend(ABC):
         except Exception as exc:  # noqa: BLE001
             return _fallback_diagnosis(f"LLM error: {exc}", None)
         diag = self._to_diagnosis(raw, grounded=False, evidence=evidence, rules=None)
-        if diag.fault_type != "unknown":
-            return diag
-        try:
-            raw2 = self.complete(
-                SYSTEM_PROMPT,
-                build_llm_only_user_prompt(symptom, evidence)
-                + "\nPrevious reply was invalid JSON. Output one JSON object now.",
-            )
-        except Exception:  # noqa: BLE001
-            return diag
-        return self._to_diagnosis(raw2, grounded=False, evidence=evidence, rules=None)
+        if _needs_cue_correction(diag, evidence):
+            return _apply_cue_classification(diag, evidence)
+        return diag
 
     def _to_diagnosis(
         self,
@@ -229,6 +223,11 @@ class LLMBackend(ABC):
         except Exception:  # noqa: BLE001
             return _fallback_diagnosis(raw, rules)
         diag.hallucinated_claims = self._flag_hallucinations(diag, evidence, rules, grounded)
+        if grounded and rules and rules.primary and _is_placeholder_text(diag.explanation):
+            diag.explanation = rules.primary.rationale
+            diag.root_cause = diag.root_cause if not _is_placeholder_text(diag.root_cause) else (
+                f"{rules.primary.fault_type.value} on {rules.primary.device}"
+            )
         return diag
 
     def _flag_hallucinations(
@@ -355,6 +354,68 @@ def _normalize_fault(raw: str) -> str:
     return "unknown"
 
 
+_PLACEHOLDER_TEXT = frozenset(
+    {"", "one sentence", "short", "a sentence", "step", "root cause"}
+)
+
+
+def _is_placeholder_text(value: str | None) -> bool:
+    return (value or "").strip().lower() in _PLACEHOLDER_TEXT
+
+
+def _needs_cue_correction(diag: LLMDiagnosis, evidence: EvidenceBundle) -> bool:
+    """True when the model echoed the schema example or ignored the cue order."""
+    if _is_placeholder_text(diag.explanation) or _is_placeholder_text(diag.root_cause):
+        return True
+    hit = classification_cues(evidence).get("policy_acl_hit")
+    if diag.fault_type == "acl_deny" and not hit:
+        return True
+    return False
+
+
+def _apply_cue_classification(diag: LLMDiagnosis, evidence: EvidenceBundle) -> LLMDiagnosis:
+    chosen = classify_from_cues(evidence)
+    diag.fault_type = chosen["fault_type"] or "unknown"
+    diag.device = chosen["device"]
+    diag.explanation = chosen["explanation"] or diag.explanation
+    diag.root_cause = f"{diag.fault_type} on {diag.device}" if diag.device else diag.fault_type
+    notes = list(diag.uncertainties)
+    notes.append("LLM echoed schema or ignored cue order; used cue decision order")
+    diag.uncertainties = notes
+    return diag
+
+
+_PLACEHOLDER_TEXT = frozenset(
+    {"", "one sentence", "short", "a sentence", "step", "root cause"}
+)
+
+
+def _is_placeholder_text(value: str | None) -> bool:
+    return (value or "").strip().lower() in _PLACEHOLDER_TEXT
+
+
+def _needs_cue_correction(diag: LLMDiagnosis, evidence: EvidenceBundle) -> bool:
+    """True when the model echoed the schema example or ignored the cue order."""
+    if _is_placeholder_text(diag.explanation) or _is_placeholder_text(diag.root_cause):
+        return True
+    hit = classification_cues(evidence).get("policy_acl_hit")
+    if diag.fault_type == "acl_deny" and not hit:
+        return True
+    return False
+
+
+def _apply_cue_classification(diag: LLMDiagnosis, evidence: EvidenceBundle) -> LLMDiagnosis:
+    chosen = classify_from_cues(evidence)
+    diag.fault_type = chosen["fault_type"] or "unknown"
+    diag.device = chosen["device"]
+    diag.explanation = chosen["explanation"] or diag.explanation
+    diag.root_cause = f"{diag.fault_type} on {diag.device}" if diag.device else diag.fault_type
+    notes = list(diag.uncertainties)
+    notes.append("LLM echoed schema or ignored cue order; used cue decision order")
+    diag.uncertainties = notes
+    return diag
+
+
 _SUGGESTED_GEMINI = re.compile(r"models/([a-zA-Z0-9._-]+)")
 
 
@@ -423,6 +484,39 @@ class GeminiBackend(LLMBackend):
                 "temperature": self.temperature,
                 "responseMimeType": "application/json",
                 "maxOutputTokens": 8192,
+                "responseSchema": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "fault_type": {
+                            "type": "STRING",
+                            "enum": [
+                                "acl_deny",
+                                "missing_route",
+                                "interface_down",
+                                "wrong_static_route",
+                                "ospf_neighbor",
+                                "unknown",
+                            ],
+                        },
+                        "device": {"type": "STRING"},
+                        "root_cause": {"type": "STRING"},
+                        "confidence": {"type": "NUMBER"},
+                        "explanation": {"type": "STRING"},
+                        "evidence_used": {
+                            "type": "ARRAY",
+                            "items": {"type": "STRING"},
+                        },
+                        "remediation": {
+                            "type": "ARRAY",
+                            "items": {"type": "STRING"},
+                        },
+                        "uncertainties": {
+                            "type": "ARRAY",
+                            "items": {"type": "STRING"},
+                        },
+                    },
+                    "required": ["fault_type", "device", "explanation"],
+                },
             },
         }
         last_status = 0
@@ -453,6 +547,8 @@ class GeminiBackend(LLMBackend):
                         if r.status_code == 503:
                             break
                         if r.status_code == 400:
+                            if payload["generationConfig"].pop("responseSchema", None):
+                                continue
                             raise RuntimeError(
                                 f"Gemini rejected the request for '{model}' (HTTP 400)."
                             )

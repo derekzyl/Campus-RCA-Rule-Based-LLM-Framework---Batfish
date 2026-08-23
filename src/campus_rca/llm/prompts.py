@@ -15,10 +15,11 @@ from campus_rca.models import EvidenceBundle, RuleDiagnosis
 from campus_rca.rules.engine import ROUTER_NODES, iface_parts, is_spurious_inactive, is_virtual_iface
 
 SYSTEM_PROMPT = """You are a campus network RCA assistant. Reply with JSON only (no markdown).
-Put fault_type and device FIRST so a truncated reply is still usable:
-{"fault_type":"acl_deny","device":"core_sw1","root_cause":"short","confidence":0.9,"explanation":"one sentence","evidence_used":["cues"],"remediation":["step"],"uncertainties":[]}
-fault_type must be exactly one of: acl_deny, missing_route, interface_down, wrong_static_route, ospf_neighbor, unknown.
-device must be a hostname (core_sw1, core_sw2, dsw_b_student, dsw_a_acad, dsw_d_dc, campus_r1, fw1, …) or JSON null."""
+Required keys in this order: fault_type, device, root_cause, confidence, explanation, evidence_used, remediation, uncertainties.
+fault_type: exactly one of acl_deny, missing_route, interface_down, wrong_static_route, ospf_neighbor, unknown.
+device: a hostname from the cue card (core_sw1, core_sw2, dsw_b_student, dsw_a_acad, dsw_d_dc, campus_r1, fw1, …) or JSON null.
+explanation: a real sentence about THIS probe. Never output placeholders such as "one sentence", "short", or "step".
+If policy_acl_hit is null, fault_type must not be acl_deny."""
 
 
 def classification_cues(evidence: EvidenceBundle) -> dict[str, Any]:
@@ -79,6 +80,49 @@ def classification_cues(evidence: EvidenceBundle) -> dict[str, Any]:
         "dst_prefix_owner": owner,
         "dst_prefix_at_core": at_core,
         "dispositions": dispositions[:4],
+    }
+
+
+def classify_from_cues(evidence: EvidenceBundle) -> dict[str, str | None]:
+    """Deterministic reading of the same cue card given to llm_only."""
+    c = classification_cues(evidence)
+    if c["policy_acl_hit"]:
+        h = c["policy_acl_hit"]
+        return {
+            "fault_type": "acl_deny",
+            "device": h["device"],
+            "explanation": h["rationale"],
+        }
+    if c["physical_admin_down"]:
+        d = c["physical_admin_down"][0]
+        return {
+            "fault_type": "interface_down",
+            "device": d["device"],
+            "explanation": f"Interface {d['iface']} on {d['device']} is administratively down.",
+        }
+    if c["bad_default_nexthop"]:
+        d = c["bad_default_nexthop"][0]
+        return {
+            "fault_type": "wrong_static_route",
+            "device": d["device"],
+            "explanation": (
+                f"Default static route next-hop {d['next_hop']} points into a campus LAN "
+                "instead of the ISP / edge handoff."
+            ),
+        }
+    if c["dst_prefix_at_core"] is False and c["dst_prefix_owner"]:
+        return {
+            "fault_type": "missing_route",
+            "device": c["dst_prefix_owner"],
+            "explanation": (
+                f"No OSPF route to {c['dst_prefix']} at core; likely missing network "
+                f"statement / advertisement on {c['dst_prefix_owner']}."
+            ),
+        }
+    return {
+        "fault_type": "unknown",
+        "device": None,
+        "explanation": "Cues did not yield a class.",
     }
 
 
@@ -198,7 +242,8 @@ Decision order (stop at the first match):
 3. Else if bad_default_nexthop is not empty → fault_type=wrong_static_route, device=that router
 4. Else if dst_prefix_at_core is false → fault_type=missing_route, device=dst_prefix_owner
 
-JSON only. First keys MUST be "fault_type" then "device"."""
+Write a real explanation for this probe (not "one sentence").
+JSON only."""
 
 
 def evidence_to_prompt_json(evidence: EvidenceBundle) -> str:

@@ -45,7 +45,21 @@ def evidence_faithfulness(result: RCAResult) -> float:
     ok = 0
     for ref in used:
         r = ref.lower()
-        if r in keys or r in {"rule_primary", "symptom", "reachability", "routes", "acl_trace", "traceroute", "interfaces"}:
+        if r in keys or r in {
+            "rule_primary",
+            "symptom",
+            "reachability",
+            "routes",
+            "acl_trace",
+            "traceroute",
+            "interfaces",
+            "cues",
+            "campus_policy",
+            "policy_acl_hit",
+            "physical_admin_down",
+            "bad_default_nexthop",
+            "dst_prefix",
+        }:
             ok += 1
         elif r in result.evidence.model_dump_json().lower():
             ok += 1
