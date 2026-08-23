@@ -141,6 +141,8 @@ Ground truth lives in `ground_truth/scenarios.yaml`. Snapshot dirs are under `co
 ## Source artefacts
 
 - Packet Tracer diagram: `CAMPUS-NETWORK-TOPOLOGY.png` (same image as `../RCA-TOPOLOGY.png`)
-- OSPF & ACL lab notes: `ospf_acl_configs.txt`
+- ACL lab notes: `ACL CONFIGURATIONS.txt`
+- VLAN / HSRP plan: `VLANS IP  ADDRESS AND GATEWAY.txt`
+- Edge / core addressing: `ROUTERS, FW, CORE-SW CONFIG.txt`
 - Batfish baseline: `configs/baseline/`
 - Faulted snapshots: `configs/scenarios/`

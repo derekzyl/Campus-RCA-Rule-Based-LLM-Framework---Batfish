@@ -54,6 +54,9 @@ def health() -> dict[str, Any]:
         except Exception as exc:  # noqa: BLE001
             payload["ollama"] = {"ok": False, "error": str(exc)}
             payload["status"] = "degraded"
+    if s.llm_backend == "gemini":
+        payload["gemini_model"] = s.gemini_model
+        payload["gemini_key_set"] = bool(s.gemini_api_key)
     return payload
 
 

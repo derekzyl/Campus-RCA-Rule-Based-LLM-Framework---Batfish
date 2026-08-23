@@ -1,0 +1,274 @@
+##VLANS IP 
+ADDRESS AND GATEWAY###
+##CORE 1 SWITCH VIRTUAL INTERFACE###
+interface vlan 10
+ ip address 192.168.10.2 255.255.255.0
+ standby 10 ip 192.168.10.1
+ standby 10 priority 110
+ standby 10 preempt
+ no shutdown
+
+interface vlan 11
+ ip address 192.168.11.2 255.255.255.0
+ standby 11 ip 192.168.11.1
+ standby 11 priority 110
+ standby 11 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+interface vlan 12
+ ip address 192.168.12.2 255.255.255.0
+ standby 12 ip 192.168.12.1
+ standby 12 priority 110
+ standby 12 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+interface vlan 20
+ ip address 192.168.20.2 255.255.255.0
+ standby 20 ip 192.168.20.1
+ standby 20 priority 110
+ standby 20 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+interface vlan 30
+ ip address 192.168.30.2 255.255.255.0
+ standby 30 ip 192.168.30.1
+ standby 30 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+interface vlan 40
+ ip address 192.168.40.2 255.255.255.0
+ standby 40 ip 192.168.40.1
+ standby 40 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+interface vlan 50
+ ip address 192.168.50.2 255.255.255.0
+ standby 50 ip 192.168.50.1
+ standby 50 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+interface vlan 55
+ ip address 11.10.55.2 255.255.255.0
+ standby 55 ip 11.10.55.1
+ standby 55 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+interface vlan 60
+ ip address 11.10.60.2 255.255.255.0
+ standby 60 ip 11.10.60.1
+ standby 60 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+interface vlan 65
+ ip address 11.10.65.2 255.255.255.0
+ standby 65 ip 11.10.65.1
+ standby 65 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+interface vlan 70
+ ip address 192.168.70.2 255.255.255.0
+ standby 70 ip 192.168.70.1
+ standby 70 priority 110
+ standby 70 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+interface vlan 75
+ ip address 192.168.75.2 255.255.255.0
+ standby 75 ip 192.168.75.1
+ standby 75 priority 110
+ standby 75 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+interface vlan 80
+ ip address 192.168.80.2 255.255.255.0
+ standby 80 ip 192.168.80.1
+ standby 80 priority 110
+ standby 80 preempt
+
+interface vlan 90
+ ip address 192.168.90.2 255.255.255.0
+ standby 90 ip 192.168.90.1
+ standby 90 priority 110
+ standby 90 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+##DHCP RELAY ON VLAN 10##
+interface vlan 10
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+###CORE 2 SVI (.3)###
+interface vlan 10
+ ip address 192.168.10.3 255.255.255.0
+ standby 10 ip 192.168.10.1
+ standby 10 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+interface vlan 11
+ ip address 192.168.11.3 255.255.255.0
+ standby 11 ip 192.168.11.1
+ standby 11 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+interface vlan 12
+ ip address 192.168.12.3 255.255.255.0
+ standby 12 ip 192.168.12.1
+ standby 12 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+interface vlan 20
+ ip address 192.168.20.3 255.255.255.0
+ standby 20 ip 192.168.20.1
+ standby 20 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+###CORE2 is active for VLANs 30, 40, 50, 55, 60 and 65:####
+interface vlan 30
+ ip address 192.168.30.3 255.255.255.0
+ standby 30 ip 192.168.30.1
+ standby 30 priority 110
+ standby 30 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+interface vlan 40
+ ip address 192.168.40.3 255.255.255.0
+ standby 40 ip 192.168.40.1
+ standby 40 priority 110
+ standby 40 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+interface vlan 50
+ ip address 192.168.50.3 255.255.255.0
+ standby 50 ip 192.168.50.1
+ standby 50 priority 110
+ standby 50 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+interface vlan 55
+ ip address 11.10.55.3 255.255.255.0
+ standby 55 ip 11.10.55.1
+ standby 55 priority 110
+ standby 55 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+interface vlan 60
+ ip address 11.10.60.3 255.255.255.0
+ standby 60 ip 11.10.60.1
+ standby 60 priority 110
+ standby 60 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+interface vlan 65
+ ip address 11.10.65.3 255.255.255.0
+ standby 65 ip 11.10.65.1
+ standby 65 priority 110
+ standby 65 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+##The remaining VLANS##
+interface vlan 70
+ ip address 192.168.70.3 255.255.255.0
+ standby 70 ip 192.168.70.1
+ standby 70 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+interface vlan 75
+ ip address 192.168.75.3 255.255.255.0
+ standby 75 ip 192.168.75.1
+ standby 75 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+interface vlan 80
+ ip address 192.168.80.3 255.255.255.0
+ standby 80 ip 192.168.80.1
+ standby 80 preempt
+
+interface vlan 90
+ ip address 192.168.90.3 255.255.255.0
+ standby 90 ip 192.168.90.1
+ standby 90 preempt
+ ip helper-address 192.168.80.10
+ ip helper-address 192.168.80.11
+
+#####Core OSPF transit VLAN ################
+#####On both have VLAN 254.#########
+
+##CORE 1###
+interface vlan 254
+ description CORE-OSPF-TRANSIT
+ ip address 192.168.254.1 255.255.255.252
+ ip ospf cost 100
+ no shutdown
+
+###CORE 2###
+interface vlan 254
+ description CORE-OSPF-TRANSIT
+ ip address 192.168.254.2 255.255.255.252
+ ip ospf cost 100
+ no shutdown
+
+####VLANS#####
+vlan 10
+ name MANAGEMENT
+vlan 11
+ name ADMIN-HR
+vlan 12
+ name IT-STAFF
+vlan 20
+ name ACADEMIC-STAFF
+vlan 30
+ name STUDENTS
+vlan 40
+ name COMPUTER-LAB
+vlan 50
+ name LIBRARY-SPORT
+vlan 55
+ name STAFF-WLAN
+vlan 60
+ name STUDENT-WLAN
+vlan 65
+ name GUEST-WLAN
+vlan 70
+ name VOIP
+vlan 75
+ name PRINTER-IOT
+vlan 80
+ name NETWORK-SERVICES
+vlan 90
+ name INTERNAL-SERVERS
+vlan 100
+ name DMZ
+vlan 199
+ name BLACKHOLE
+vlan 254
+ name CORE-TRANSIT
+vlan 999
+ name UNUSED-NATIVE
+
+
+
+

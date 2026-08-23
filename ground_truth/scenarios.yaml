@@ -169,10 +169,10 @@ scenarios:
     name: "Services VLAN omitted from OSPF on DC distribution"
     snapshot_dir: configs/scenarios/missing_ospf_dns_services
     block: "Building D Floor 0 — dsw_d_dc"
-    symptom: "Campus clients cannot reach DNS 192.168.80.12. DC local interfaces on dsw_d_dc look up."
+    symptom: "Campus clients (academic VLAN) cannot reach internal DNS 192.168.80.13. DC local interfaces on dsw_d_dc look up."
     probe:
-      src_ip: "192.168.30.21"
-      dst_ip: "192.168.80.12"
+      src_ip: "192.168.20.21"
+      dst_ip: "192.168.80.13"
       dst_port: 53
       ip_protocol: "UDP"
       applications: ["DNS"]

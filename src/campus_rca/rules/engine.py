@@ -3,6 +3,12 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from campus_rca.campus_policy import (
+    PREFIX_OWNER,
+    is_bad_default_nexthop,
+    match_campus_acl,
+    prefix_for_ip,
+)
 from campus_rca.models import EvidenceBundle, FaultType, RuleDiagnosis, RuleHit
 
 
@@ -30,20 +36,6 @@ ROUTER_NODES = frozenset(
         "border1",
     }
 )
-
-# Prefix ownership for missing-route localisation
-PREFIX_OWNER = {
-    "192.168.30.0/24": "dsw_b_student",
-    "192.168.20.0/24": "dsw_a_acad",
-    "192.168.11.0/24": "dsw_a_admin",
-    "192.168.12.0/24": "dsw_a_acad",
-    "192.168.40.0/24": "dsw_c_lab",
-    "192.168.50.0/24": "dsw_b_lib",
-    "192.168.80.0/24": "dsw_d_dc",
-    "192.168.90.0/24": "dsw_d_dc",
-    "11.10.65.0/24": "dsw_b_student",
-    "12.20.20.0/26": "fw1",
-}
 
 DEVICE_RE = (
     r"\b(campus_r1|campus_r2|fw1|fw2|core_sw1|core_sw2|"
@@ -94,31 +86,7 @@ def _is_router(node: Any) -> bool:
 
 
 def _prefix_for_ip(ip: str) -> str | None:
-    if ip.startswith("192.168.30."):
-        return "192.168.30.0/24"
-    if ip.startswith("192.168.20."):
-        return "192.168.20.0/24"
-    if ip.startswith("192.168.11."):
-        return "192.168.11.0/24"
-    if ip.startswith("192.168.12."):
-        return "192.168.12.0/24"
-    if ip.startswith("192.168.40."):
-        return "192.168.40.0/24"
-    if ip.startswith("192.168.50."):
-        return "192.168.50.0/24"
-    if ip.startswith("192.168.80."):
-        return "192.168.80.0/24"
-    if ip.startswith("192.168.90."):
-        return "192.168.90.0/24"
-    if ip.startswith("11.10.65."):
-        return "11.10.65.0/24"
-    if ip.startswith("12.20.20."):
-        return "12.20.20.0/26"
-    if ip.startswith("10.10.10."):
-        return "10.10.10.0/24"
-    if ip.startswith("10.20.20."):
-        return "10.20.20.0/24"
-    return None
+    return prefix_for_ip(ip)
 
 
 class RuleEngine:
@@ -143,47 +111,22 @@ class RuleEngine:
         return RuleDiagnosis(primary=primary, candidates=hits, unmatched_evidence=unmatched)
 
     def _rule_acl_deny(self, evidence: EvidenceBundle, blob: str) -> list[RuleHit]:
-        hits = []
-        denied = any(
-            "denied" in _s(r) or "deny" in _s(r.get("Action") if isinstance(r, dict) else r)
-            for r in (evidence.acl_trace + evidence.reachability + evidence.traceroute)
-        )
-        filter_name = None
-        device = None
-        for row in evidence.acl_trace:
-            if "deny" in _s(row.get("Action")):
-                filter_name = row.get("Filter_Name") or row.get("Filter")
-                device = row.get("Node")
-                break
-        if not device:
-            for row in evidence.interfaces:
-                filt = row.get("Incoming_Filter_Name") or row.get("Outgoing_Filter_Name")
-                if filt:
-                    iface = row.get("Interface")
-                    if isinstance(iface, dict):
-                        device = iface.get("hostname")
-                    filter_name = filt
-                    break
-        if denied or ("denied_in" in blob or "denied_out" in blob):
-            hits.append(
-                RuleHit(
-                    rule_id="R1_ACL_DENY",
-                    fault_type=FaultType.ACL_DENY,
-                    confidence=0.92 if denied else 0.75,
-                    device=device
-                    or self._guess_device(
-                        blob, ["core_sw1", "fw1", "dsw_b_student", "core_sw2", "dist2"]
-                    ),
-                    object=str(filter_name) if filter_name else "ACL",
-                    layer="policy",
-                    rationale=(
-                        "Reachability/traceroute disposition indicates ACL drop "
-                        f"(filter={filter_name}). Routing evidence may still show a path."
-                    ),
-                    evidence_refs=["acl_trace", "reachability", "traceroute"],
-                )
+        """R1 — only documented DENY ACEs for this probe (not implicit deny on other ACLs)."""
+        hit = match_campus_acl(evidence.probe)
+        if not hit:
+            return []
+        return [
+            RuleHit(
+                rule_id="R1_ACL_DENY",
+                fault_type=FaultType.ACL_DENY,
+                confidence=0.94,
+                device=hit["device"],
+                object=hit["filter"],
+                layer="policy",
+                rationale=hit["rationale"],
+                evidence_refs=["acl_trace", "reachability", "campus_policy"],
             )
-        return hits
+        ]
 
     def _rule_interface_down(self, evidence: EvidenceBundle, blob: str) -> list[RuleHit]:
         hits = []
@@ -228,14 +171,7 @@ class RuleEngine:
             proto = _s(row.get("Protocol"))
             nh = _s(row.get("Next_Hop_IP") or row.get("Next_Hop"))
             if net in {"0.0.0.0/0", "default"} and "static" in proto:
-                # Wrong if next-hop is inside campus LAN / WLAN ranges
-                bad = (
-                    nh.startswith("192.168.")
-                    or nh.startswith("10.10.")
-                    or nh.startswith("10.20.")
-                    or nh.startswith("11.10.")
-                )
-                if bad:
+                if is_bad_default_nexthop(nh):
                     hits.append(
                         RuleHit(
                             rule_id="R3_WRONG_STATIC",
@@ -255,14 +191,19 @@ class RuleEngine:
 
     def _rule_missing_route(self, evidence: EvidenceBundle, blob: str) -> list[RuleHit]:
         hits = []
+        if match_campus_acl(evidence.probe):
+            return []
         no_route = "no_route" in blob or any(
             "no_route" in _s(r) for r in evidence.traceroute + evidence.reachability
+        )
+        unreachable = no_route or any(
+            "unreachable" in _s(r) or "no_route" in _s(r) for r in evidence.reachability
         )
         dst = evidence.probe.dst_ip
         target_prefix = _prefix_for_ip(dst)
         owner = PREFIX_OWNER.get(target_prefix or "", None)
 
-        if target_prefix and no_route:
+        if target_prefix:
             appears_on_cores = any(
                 target_prefix in str(r.get("Network"))
                 and str(r.get("Node")).lower() in {"core_sw1", "core_sw2", "core1"}
@@ -294,7 +235,7 @@ class RuleEngine:
                     )
                 )
 
-        if no_route and not hits:
+        if (no_route or unreachable) and not hits:
             hits.append(
                 RuleHit(
                     rule_id="R4_MISSING_ROUTE_GENERIC",
@@ -329,6 +270,8 @@ class RuleEngine:
         return hits
 
     def _rule_reachability_ok(self, evidence: EvidenceBundle, blob: str) -> list[RuleHit]:
+        if match_campus_acl(evidence.probe):
+            return []
         if any(_s(r.get("Action")) in {"deny", "denied"} for r in evidence.acl_trace):
             return []
         if any(

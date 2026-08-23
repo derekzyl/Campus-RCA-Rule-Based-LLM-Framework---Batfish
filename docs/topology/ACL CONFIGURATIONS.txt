@@ -1,4 +1,4 @@
-~OSPF & ACL CONFIGURATIONS~
+~ACL CONFIGURATIONS~
 
 ###Standard ACL FOR MGT###
 
@@ -16,7 +16,10 @@ exec-timeout 20 0
 end
 write memory
 
-##Guest WLAN in 11.10.65.0/24 should not reach internal network####
+
+####################Guest WLAN in 11.10.65.0/24 should not reach internal network####
+###Configure on BOTH CORE-SW ####
+
 configure terminal
 
 ip access-list extended GUEST-WLAN-FILTER
@@ -35,7 +38,7 @@ ip access-list extended GUEST-WLAN-FILTER
 
 exit
 
-##Apply inbound on VLAN 65##
+######Apply inbound on VLAN 65##
 interface vlan 65
  ip access-group GUEST-WLAN-FILTER in
 exit
@@ -54,7 +57,6 @@ write memory
 configure terminal
 
 access-list DMZ-IN extended permit udp 12.20.20.0 255.255.255.192 host 192.168.80.13 eq domain
-
 access-list DMZ-IN extended permit tcp 12.20.20.0 255.255.255.192 host 192.168.80.13 eq domain
 
 access-list DMZ-IN extended deny ip 12.20.20.0 255.255.255.192 192.168.0.0 255.255.0.0
@@ -63,7 +65,10 @@ access-list DMZ-IN extended deny ip 12.20.20.0 255.255.255.192 11.10.0.0 255.255
 
 access-list DMZ-IN extended permit ip 12.20.20.0 255.255.255.192 any
 
-access-group DMZ-IN in interface dmz
+access-group DMZ-IN in interface DMZ
+
+end
+write memory
 
 ##students to be separated from management and infrastructure##
 ##CONFIGURATION ON BOTH CORE SWITCHES##
@@ -96,11 +101,6 @@ end
 router ospf 1
  router-id 1.1.1.1
 
- passive-interface default
-
- no passive-interface vlan 254
- no passive-interface gigabitEthernet1/0/24
-
  network 192.168.10.0 0.0.0.255 area 0
  network 192.168.11.0 0.0.0.255 area 0
  network 192.168.12.0 0.0.0.255 area 0
@@ -129,11 +129,7 @@ router ospf 1
 
  router-id 2.2.2.2
 
- passive-interface default
-
- no passive-interface vlan 254
- no passive-interface gigabitEthernet1/0/24
-
+ 
  network 192.168.10.0 0.0.0.255 area 0
  network 192.168.11.0 0.0.0.255 area 0
  network 192.168.12.0 0.0.0.255 area 0
@@ -183,8 +179,6 @@ exit
 *Outside: 100.100.50.6/30
 *DMZ:     12.20.20.2/26
 
-configure terminal
-
 router ospf 1
 
  router-id 4.4.4.4
@@ -198,7 +192,9 @@ exit
 *Router 1 firewall-facing address:100.100.50.1/30
 
 configure terminal
-ip route 0.0.0.0 0.0.0.0 <ISP-NEXT-HOP>
+ip route 0.0.0.0 0.0.0.0 20.20.20.2 <ISP-A-NEXT-HOP>
+ip route 0.0.0.0 0.0.0.0 30.30.30.2<ISP-B-NEXT-HOP>
+
 
 router ospf 1
 
@@ -215,7 +211,9 @@ write memory
 
 ###MAIN-CAMPUS-R2 OSPF####
 configure terminal
-ip route 0.0.0.0 0.0.0.0 <ISP2-NEXT-HOP>
+ip route 0.0.0.0 0.0.0.0 30.30.30.6 <ISP-B-NEXT-HOP>
+ip route 0.0.0.0 0.0.0.0 20.20.20.6 <ISP-A-NEXT-HOP>
+
 
 router ospf 1
 

@@ -98,12 +98,18 @@ def adhoc(
 
 @app.command("check-llm")
 def check_llm() -> None:
-    """Verify the configured LLM backend (especially Ollama) is reachable."""
+    """Verify the configured LLM backend (Ollama, OpenAI, or Gemini) is reachable."""
     from campus_rca.llm import get_llm_backend
-    from campus_rca.llm.backend import OllamaBackend
+    from campus_rca.llm.backend import GeminiBackend, OllamaBackend
 
     settings = get_settings()
-    console.print(f"backend=[cyan]{settings.llm_backend}[/cyan] model=[cyan]{settings.ollama_model if settings.llm_backend=='ollama' else settings.openai_model}[/cyan]")
+    if settings.llm_backend == "ollama":
+        model = settings.ollama_model
+    elif settings.llm_backend == "gemini":
+        model = settings.gemini_model
+    else:
+        model = settings.openai_model
+    console.print(f"backend=[cyan]{settings.llm_backend}[/cyan] model=[cyan]{model}[/cyan]")
     backend = get_llm_backend(settings)
     if isinstance(backend, OllamaBackend):
         try:
@@ -111,7 +117,6 @@ def check_llm() -> None:
             console.print(info)
             names = " ".join(info["models"])
             if settings.ollama_model not in names and f"{settings.ollama_model}:" not in names:
-                # allow tag suffix match e.g. llama3.1:latest
                 ok = any(
                     m == settings.ollama_model or m.startswith(settings.ollama_model + ":")
                     for m in info["models"]
@@ -129,6 +134,17 @@ def check_llm() -> None:
             console.print(Panel.fit(raw, title="ollama response"))
         except Exception as exc:  # noqa: BLE001
             console.print(f"[red]Ollama check failed:[/red] {exc}")
+            raise typer.Exit(1)
+    elif isinstance(backend, GeminiBackend):
+        try:
+            console.print(backend.ping())
+            raw = backend.complete(
+                'Reply with JSON only: {"ok": true, "backend": "gemini"}',
+                "healthcheck",
+            )
+            console.print(Panel.fit(raw, title="gemini response"))
+        except Exception as exc:  # noqa: BLE001
+            console.print(f"[red]Gemini check failed:[/red] {exc}")
             raise typer.Exit(1)
     else:
         console.print(f"[green]Backend {type(backend).__name__} loaded[/green]")

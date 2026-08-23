@@ -1,4 +1,5 @@
 from campus_rca.llm.backend import (
+    GeminiBackend,
     LLMBackend,
     MockBackend,
     OllamaBackend,
@@ -7,6 +8,7 @@ from campus_rca.llm.backend import (
 )
 
 __all__ = [
+    "GeminiBackend",
     "LLMBackend",
     "MockBackend",
     "OllamaBackend",

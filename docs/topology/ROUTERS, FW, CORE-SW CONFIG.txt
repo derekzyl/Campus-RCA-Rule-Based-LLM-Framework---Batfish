@@ -1,0 +1,123 @@
+####ROUTERS, FW, CORE-SW CONFIG####
+
+## R1 ###
+interface GigabitEthernet0/0/0
+ description #TO-FW1#
+ ip address 192.168.250.1 255.255.255.252
+ duplex auto
+ speed auto
+!
+interface GigabitEthernet0/0/1
+ description #TO-ISP-B#
+ ip address 30.30.30.2 255.255.255.252
+ duplex auto
+ speed auto
+!
+interface GigabitEthernet0/0/2
+ description #TO-ISP-A#
+ ip address 20.20.20.2 255.255.255.252
+!
+### R2 ####
+
+interface GigabitEthernet0/0/0
+ description ##TO-FW2##
+ ip address 192.168.250.5 255.255.255.252
+ duplex auto
+ speed auto
+!
+interface GigabitEthernet0/0/1
+ description #TO-ISP-A#
+ ip address 20.20.20.6 255.255.255.252
+ duplex auto
+ speed auto
+!
+interface GigabitEthernet0/0/2
+ description #TO-ISP-B#
+ ip address 30.30.30.6 255.255.255.252
+### FW-1 ###
+hostname FW-1
+!
+interface Management1/1
+ nameif management
+ security-level 100
+ ip address 192.168.1.1 255.255.255.0
+ shutdown
+!
+interface GigabitEthernet1/1
+ nameif DMZ
+ security-level 50
+ ip address 12.20.20.1 255.255.255.192
+!
+interface GigabitEthernet1/2
+ nameif OUTSIDE1
+ security-level 0
+ ip address 192.168.250.2 255.255.255.252
+!
+interface GigabitEthernet1/3
+ nameif INSIDE2
+ security-level 100
+ ip address 192.168.250.14 255.255.255.252
+!
+interface GigabitEthernet1/4
+ nameif INSIDE1
+ security-level 100
+ ip address 192.168.250.10 255.255.255.252
+! 
+
+###FW-2###
+hostname FW-2
+!
+interface Management1/1
+ nameif management
+ security-level 100
+ ip address 192.168.1.1 255.255.255.0
+ shutdown
+!
+interface GigabitEthernet1/1
+ description #TO-CORE-SW2#
+ nameif INSIDE1
+ security-level 100
+ ip address 192.168.250.22 255.255.255.252
+!
+interface GigabitEthernet1/2
+ description #TO-R2#
+ nameif OUTSIDE1
+ security-level 0
+ ip address 192.168.250.6 255.255.255.252
+!
+interface GigabitEthernet1/3
+ description #TO-CORE-SW1#
+ nameif INSIDE2
+ security-level 100
+ ip address 192.168.250.18 255.255.255.252
+!
+interface GigabitEthernet1/4
+ nameif inside2
+ security-level 100
+ no ip address
+ 
+
+#### CORE-SW1 ###
+interface GigabitEthernet1/1/1
+ description #TO-FW2#
+ no switchport
+ ip address 192.168.250.17 255.255.255.252
+!
+interface GigabitEthernet1/1/2
+ description #TO-FW1#
+ no switchport
+ ip address 192.168.250.9 255.255.255.252
+
+#### CORE-SW2 ####
+interface GigabitEthernet1/0/9
+ description CORESW2-TO-FW2
+ no switchport
+ ip address 192.168.250.21 255.255.255.252
+ duplex auto
+ speed auto
+
+interface GigabitEthernet1/1/1
+ description CORESW2-TO-FW1
+ no switchport
+ ip address 192.168.250.13 255.255.255.252
+!

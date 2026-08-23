@@ -124,6 +124,7 @@ uv run python evaluation/run_eval.py --out results
 |---|---|
 | `ollama` | **Default for this project** — local model, ethics-friendly |
 | `openai` | Needs `OPENAI_API_KEY`, temperature 0.0 |
+| `gemini` | Needs `GEMINI_API_KEY` (Google AI Studio), `GEMINI_MODEL=gemini-3.6-flash` |
 | `mock` | Deterministic stand-in for CI / offline demos |
 
 ```bash
@@ -167,8 +168,9 @@ scripts/
   select_ollama_model.sh       # pick local Ollama model
 src/campus_rca/
   batfish_client.py            # evidence (+ synthetic offline fallback)
-  rules/engine.py              # R0–R5 deterministic rules
-  llm/                         # prompts + ollama/openai/mock
+  rules/engine.py              # R0–R5 using docs/topology campus ACL/VLAN policy
+  campus_policy.py             # STUDENT-FILTER / GUEST-WLAN-FILTER / DMZ-IN ACE matchers
+  llm/                         # prompts + ollama/openai/gemini/mock
   pipeline.py                  # rule_only / llm_only / hybrid
   gui.py                       # Tkinter UI
 evaluation/

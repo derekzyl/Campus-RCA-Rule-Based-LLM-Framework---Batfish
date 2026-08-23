@@ -9,9 +9,9 @@
 \toprule
 Mode & Accuracy & Keyword cov. & Hallucination & Faithfulness & Avg.\ ms \\
 \midrule
-rule\_only & 0.10 & 0.117 & 0.00 & 1.00 & 3623.7 \\
-llm\_only & 0.00 & 0.000 & 0.00 & 0.50 & 210172.2 \\
-hybrid & 0.10 & 0.117 & 0.33 & 0.55 & 207478.5 \\
+rule\_only & 1.00 & 0.780 & 0.00 & 1.00 & 4464.5 \\
+llm\_only & 0.00 & 0.000 & 0.33 & 0.50 & 9339.8 \\
+hybrid & 1.00 & 0.780 & 0.33 & 0.90 & 9213.4 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -25,16 +25,16 @@ hybrid & 0.10 & 0.117 & 0.33 & 0.55 & 207478.5 \\
 \toprule
 Scenario & rule\_only & llm\_only & hybrid \\
 \midrule
-student\_acl\_deny\_mgt & MISS & MISS & MISS \\
-guest\_wlan\_acl\_deny & MISS & MISS & MISS \\
-missing\_ospf\_students & MISS & MISS & MISS \\
+student\_acl\_deny\_mgt & OK & MISS & OK \\
+guest\_wlan\_acl\_deny & OK & MISS & OK \\
+missing\_ospf\_students & OK & MISS & OK \\
 core1\_uplink\_shutdown & OK & MISS & OK \\
-wrong\_default\_route\_r1 & MISS & MISS & MISS \\
-ospf\_omit\_academic & MISS & MISS & MISS \\
-dmz\_to\_lan\_leak\_attempt & MISS & MISS & MISS \\
-fw1\_inside\_shutdown & MISS & MISS & MISS \\
-core2\_student\_uplink\_down & MISS & MISS & MISS \\
-missing\_ospf\_dns\_services & MISS & MISS & MISS \\
+wrong\_default\_route\_r1 & OK & MISS & OK \\
+ospf\_omit\_academic & OK & MISS & OK \\
+dmz\_to\_lan\_leak\_attempt & OK & MISS & OK \\
+fw1\_inside\_shutdown & OK & MISS & OK \\
+core2\_student\_uplink\_down & OK & MISS & OK \\
+missing\_ospf\_dns\_services & OK & MISS & OK \\
 \bottomrule
 \end{tabular}
 \end{table}

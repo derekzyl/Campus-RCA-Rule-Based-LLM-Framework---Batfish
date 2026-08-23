@@ -26,7 +26,7 @@ def main() -> None:
     )
     parser.add_argument("--offline", action="store_true", help="Synthetic evidence (no Batfish)")
     parser.add_argument("--out", type=Path, default=ROOT / "results")
-    parser.add_argument("--llm-backend", default=None, help="mock|openai|ollama")
+    parser.add_argument("--llm-backend", default=None, help="mock|openai|ollama|gemini")
     args = parser.parse_args()
 
     settings = Settings()

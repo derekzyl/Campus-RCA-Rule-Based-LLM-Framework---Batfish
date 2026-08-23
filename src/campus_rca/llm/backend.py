@@ -40,7 +40,9 @@ def _extract_json(text: str) -> dict[str, Any]:
         for attempt in (cand, re.sub(r",\s*([}\]])", r"\1", cand)):
             try:
                 data = json.loads(attempt)
-                if isinstance(data, dict):
+                if isinstance(data, dict) and (
+                    data.get("fault_type") or data.get("device") or data.get("root_cause")
+                ):
                     return data
             except json.JSONDecodeError as exc:
                 last_err = exc
@@ -56,18 +58,79 @@ def _extract_json(text: str) -> dict[str, Any]:
             repaired = repaired + ("]" * max(0, open_square)) + ("}" * max(0, open_curly))
             try:
                 data = json.loads(repaired)
-                if isinstance(data, dict):
+                if isinstance(data, dict) and (
+                    data.get("fault_type") or data.get("device") or data.get("root_cause")
+                ):
                     return data
             except json.JSONDecodeError as exc:
                 last_err = exc
+
+    salvaged = _salvage_partial_json(text)
+    if salvaged.get("fault_type") or salvaged.get("device"):
+        return salvaged
 
     if last_err:
         raise last_err
     raise json.JSONDecodeError("No JSON object found", text, 0)
 
 
+_HOST_RE = re.compile(
+    r"\b(campus_r1|campus_r2|fw1|fw2|core_sw1|core_sw2|"
+    r"dsw_a_admin|dsw_a_acad|dsw_b_lib|dsw_b_student|dsw_c_lab|"
+    r"dsw_d_dc|dsw_d_media|dsw_dmz)\b",
+    re.I,
+)
+
+
+def _salvage_partial_json(text: str) -> dict[str, Any]:
+    """Recover fault_type/device from truncated or prose-y model output."""
+    out: dict[str, Any] = {}
+    ft = re.search(r'"fault_type"\s*:\s*"([^"]+)"', text)
+    if ft:
+        out["fault_type"] = ft.group(1)
+    dev = re.search(r'"device"\s*:\s*"([^"]+)"', text)
+    if dev:
+        out["device"] = dev.group(1)
+    rc = re.search(r'"root_cause"\s*:\s*"(.*)', text)
+    if rc:
+        out["root_cause"] = rc.group(1).split('"')[0]
+        out.setdefault("explanation", out["root_cause"])
+    blob = text.lower()
+    if not out.get("device"):
+        host = _HOST_RE.search(text)
+        if host:
+            out["device"] = host.group(1).lower()
+    if not out.get("fault_type"):
+        if any(w in blob for w in ("acl", "filter", "deny")):
+            out["fault_type"] = "acl_deny"
+        elif "shutdown" in blob or ("interface" in blob and "down" in blob):
+            out["fault_type"] = "interface_down"
+        elif "next-hop" in blob or "nexthop" in blob or (
+            "default" in blob and "static" in blob
+        ):
+            out["fault_type"] = "wrong_static_route"
+        elif any(w in blob for w in ("advertis", "ospf", "missing", "no_route", "prefix")):
+            out["fault_type"] = "missing_route"
+    if out:
+        out.setdefault("confidence", 0.6)
+        out.setdefault("evidence_used", ["cues"])
+        out.setdefault("remediation", [])
+        out.setdefault("uncertainties", ["Salvaged from truncated LLM JSON"])
+        out.setdefault("explanation", out.get("root_cause") or "")
+    return out
+
+
 def _fallback_diagnosis(raw: str, rules: RuleDiagnosis | None) -> LLMDiagnosis:
-    """When the model returns unparseable JSON, keep the run alive."""
+    """When the model fails or returns unparseable JSON, keep the run alive."""
+    api_fail = (raw or "").startswith("LLM error:")
+    if api_fail:
+        uncertainty = "LLM backend failed — using rule diagnosis"
+        claim = (raw or "")[:240]
+        unknown_expl = (raw or "LLM backend failed.")[:300]
+    else:
+        uncertainty = "LLM JSON parse failed — using rule diagnosis"
+        claim = "LLM response was not valid JSON"
+        unknown_expl = "Model returned invalid JSON; no rule diagnosis available."
     if rules and rules.primary:
         p = rules.primary
         return LLMDiagnosis(
@@ -78,21 +141,21 @@ def _fallback_diagnosis(raw: str, rules: RuleDiagnosis | None) -> LLMDiagnosis:
             explanation=p.rationale,
             evidence_used=list(p.evidence_refs),
             remediation=[f"Inspect {p.device}:{p.object}"],
-            uncertainties=["LLM JSON parse failed — using rule diagnosis"],
+            uncertainties=[uncertainty],
             raw_text=raw,
-            hallucinated_claims=["LLM response was not valid JSON"],
+            hallucinated_claims=[claim],
         )
     return LLMDiagnosis(
-        root_cause="LLM response unparseable",
+        root_cause="LLM unavailable" if api_fail else "LLM response unparseable",
         fault_type="unknown",
         device=None,
         confidence=0.0,
-        explanation="Model returned invalid JSON; no rule diagnosis available.",
+        explanation=unknown_expl,
         evidence_used=[],
         remediation=[],
-        uncertainties=["LLM JSON parse failed"],
+        uncertainties=[uncertainty.replace(" — using rule diagnosis", "")],
         raw_text=raw,
-        hallucinated_claims=["LLM response was not valid JSON"],
+        hallucinated_claims=[claim],
     )
 
 
@@ -109,13 +172,30 @@ class LLMBackend(ABC):
             evidence_to_prompt_json(evidence),
             rules_to_prompt_json(rules),
         )
-        raw = self.complete(SYSTEM_PROMPT, user)
+        try:
+            raw = self.complete(SYSTEM_PROMPT, user)
+        except Exception as exc:  # noqa: BLE001
+            return _fallback_diagnosis(f"LLM error: {exc}", rules)
         return self._to_diagnosis(raw, grounded=True, evidence=evidence, rules=rules)
 
     def diagnose_llm_only(self, symptom: str, evidence: EvidenceBundle) -> LLMDiagnosis:
-        user = build_llm_only_user_prompt(symptom, evidence_to_prompt_json(evidence))
-        raw = self.complete(SYSTEM_PROMPT, user)
-        return self._to_diagnosis(raw, grounded=False, evidence=evidence, rules=None)
+        user = build_llm_only_user_prompt(symptom, evidence)
+        try:
+            raw = self.complete(SYSTEM_PROMPT, user)
+        except Exception as exc:  # noqa: BLE001
+            return _fallback_diagnosis(f"LLM error: {exc}", None)
+        diag = self._to_diagnosis(raw, grounded=False, evidence=evidence, rules=None)
+        if diag.fault_type != "unknown":
+            return diag
+        try:
+            raw2 = self.complete(
+                SYSTEM_PROMPT,
+                build_llm_only_user_prompt(symptom, evidence)
+                + "\nPrevious reply was invalid JSON. Output one JSON object now.",
+            )
+        except Exception:  # noqa: BLE001
+            return diag
+        return self._to_diagnosis(raw2, grounded=False, evidence=evidence, rules=None)
 
     def _to_diagnosis(
         self,
@@ -139,10 +219,10 @@ class LLMBackend(ABC):
         }:
             device = None
 
-        fault = str(data.get("fault_type", "unknown")).strip().lower()
-        # Models sometimes echo the whole enum string
-        if "|" in fault:
-            fault = "unknown"
+        if not data.get("fault_type") and not data.get("device"):
+            return _fallback_diagnosis(raw or "Empty LLM JSON", rules)
+
+        fault = _normalize_fault(str(data.get("fault_type", "unknown")))
 
         diag = LLMDiagnosis(
             root_cause=str(data.get("root_cause", "")),
@@ -207,6 +287,174 @@ class OpenAIBackend(LLMBackend):
             ],
         )
         return resp.choices[0].message.content or "{}"
+
+
+_FAULT_TYPES = (
+    "wrong_static_route",
+    "interface_down",
+    "missing_route",
+    "ospf_neighbor",
+    "acl_deny",
+    "unknown",
+)
+
+
+def _normalize_fault(raw: str) -> str:
+    s = (raw or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if s in _FAULT_TYPES:
+        return s
+    for token in re.split(r"[|,/;]+", s):
+        t = token.strip().strip("\"'")
+        if t in _FAULT_TYPES:
+            return t
+    for name in _FAULT_TYPES:
+        if name in s:
+            return name
+    return "unknown"
+
+
+_SUGGESTED_GEMINI = re.compile(r"models/([a-zA-Z0-9._-]+)")
+
+
+class GeminiBackend(LLMBackend):
+    """Google Gemini generateContent API (online)."""
+
+    # 2.0 / 2.5 Flash are retired for new AI Studio keys (404 → use 3.x).
+    FALLBACK_MODELS = (
+        "gemini-3.6-flash",
+        "gemini-3.7-flash",
+        "gemini-3.5-flash",
+        "gemini-flash-latest",
+        "gemini-3.1-flash-lite",
+    )
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "gemini-3.6-flash",
+        temperature: float = 0.0,
+        timeout_s: float = 120.0,
+    ):
+        self.api_key = api_key
+        self.model = model
+        self.temperature = temperature
+        self.timeout_s = timeout_s
+        self.base_url = "https://generativelanguage.googleapis.com/v1beta"
+
+    def _headers(self) -> dict[str, str]:
+        # Header auth so a 503/404 never logs ?key= in the URL
+        return {"x-goog-api-key": self.api_key, "Content-Type": "application/json"}
+
+    def ping(self) -> dict:
+        import httpx
+
+        last_err: str | None = None
+        for model in self._models_to_try():
+            url = f"{self.base_url}/models/{model}"
+            with httpx.Client(timeout=15.0) as client:
+                r = client.get(url, headers=self._headers())
+            if r.status_code == 200:
+                self.model = model
+                return {"ok": True, "model": model, "backend": "gemini"}
+            last_err = f"HTTP {r.status_code}"
+        raise RuntimeError(
+            f"Gemini model '{self.model}' is unavailable ({last_err}). "
+            "Set GEMINI_MODEL to gemini-3.6-flash or gemini-flash-latest."
+        )
+
+    def _models_to_try(self) -> list[str]:
+        seen: list[str] = []
+        for name in (self.model, *self.FALLBACK_MODELS):
+            if name and name not in seen:
+                seen.append(name)
+        return seen
+
+    def complete(self, system: str, user: str) -> str:
+        import time
+
+        import httpx
+
+        payload = {
+            "systemInstruction": {"parts": [{"text": system}]},
+            "contents": [{"role": "user", "parts": [{"text": user}]}],
+            "generationConfig": {
+                "temperature": self.temperature,
+                "responseMimeType": "application/json",
+                "maxOutputTokens": 8192,
+            },
+        }
+        last_status = 0
+        tried: list[str] = []
+        try:
+            with httpx.Client(timeout=httpx.Timeout(self.timeout_s, connect=15.0)) as client:
+                models = self._models_to_try()
+                idx = 0
+                while idx < len(models):
+                    model = models[idx]
+                    idx += 1
+                    if model in tried:
+                        continue
+                    tried.append(model)
+                    url = f"{self.base_url}/models/{model}:generateContent"
+                    empty = False
+                    for attempt in range(1, 4):
+                        r = client.post(url, headers=self._headers(), json=payload)
+                        last_status = r.status_code
+                        if r.status_code == 404:
+                            for suggested in _SUGGESTED_GEMINI.findall(r.text or ""):
+                                if suggested not in tried and suggested not in models:
+                                    models.append(suggested)
+                            break
+                        if r.status_code in {429, 503} and attempt < 3:
+                            time.sleep(2 * attempt)
+                            continue
+                        if r.status_code == 503:
+                            break
+                        if r.status_code == 400:
+                            raise RuntimeError(
+                                f"Gemini rejected the request for '{model}' (HTTP 400)."
+                            )
+                        if r.status_code in {401, 403}:
+                            raise RuntimeError(
+                                "Gemini API key rejected. Check GEMINI_API_KEY "
+                                "(https://aistudio.google.com/apikey)."
+                            )
+                        if r.status_code >= 400:
+                            raise RuntimeError(
+                                f"Gemini HTTP {r.status_code} for model '{model}'."
+                            )
+                        data = r.json()
+                        text = self._candidate_text(data)
+                        if not text:
+                            empty = True
+                            break
+                        self.model = model
+                        return text
+                    if empty:
+                        continue
+        except httpx.ConnectError as exc:
+            raise RuntimeError("Cannot reach Gemini API.") from exc
+        except httpx.TimeoutException as exc:
+            raise RuntimeError(
+                f"Gemini timed out after {self.timeout_s:.0f}s for model '{self.model}'."
+            ) from exc
+
+        raise RuntimeError(
+            f"Gemini model '{self.model}' unavailable (HTTP {last_status}). "
+            "Set GEMINI_MODEL=gemini-3.6-flash and retry."
+        )
+
+    @staticmethod
+    def _candidate_text(data: dict) -> str:
+        cands = data.get("candidates") or []
+        if not cands:
+            return ""
+        parts = (cands[0].get("content") or {}).get("parts") or []
+        visible = "".join(p.get("text") or "" for p in parts if not p.get("thought"))
+        text = (visible or "".join(p.get("text") or "" for p in parts)).strip()
+        if text in {"", "{}", "null"}:
+            return ""
+        return text
 
 
 class OllamaBackend(LLMBackend):
@@ -293,7 +541,7 @@ class MockBackend(LLMBackend):
         device_match = re.search(r'"device":\s*"([^"]+)"', user)
         obj_match = re.search(r'"object":\s*"([^"]+)"', user)
 
-        if "Validated rule-based diagnosis" in user and rule_match:
+        if "Validated rule diagnosis" in user and rule_match:
             fault = rule_match.group(1)
             device = device_match.group(1) if device_match else None
             obj = obj_match.group(1) if obj_match else None
@@ -374,6 +622,14 @@ def get_llm_backend(settings=None) -> LLMBackend:
             raise RuntimeError("OPENAI_API_KEY required when LLM_BACKEND=openai")
         return OpenAIBackend(
             settings.openai_api_key, settings.openai_model, settings.llm_temperature
+        )
+    if settings.llm_backend == "gemini":
+        if not settings.gemini_api_key:
+            raise RuntimeError("GEMINI_API_KEY required when LLM_BACKEND=gemini")
+        return GeminiBackend(
+            settings.gemini_api_key,
+            settings.gemini_model,
+            settings.llm_temperature,
         )
     if settings.llm_backend == "ollama":
         return OllamaBackend(

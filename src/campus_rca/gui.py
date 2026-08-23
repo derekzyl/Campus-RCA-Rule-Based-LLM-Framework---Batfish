@@ -30,7 +30,7 @@ from campus_rca.setup_checks import (
 
 
 MODES = ("hybrid", "rule_only", "llm_only")
-BACKENDS = ("ollama", "openai")
+BACKENDS = ("ollama", "openai", "gemini")
 
 
 class CampusRCAGUI(tk.Tk):
@@ -218,7 +218,7 @@ class CampusRCAGUI(tk.Tk):
             self.tab_eval,
             text=(
                 "Runs rule_only, llm_only, and hybrid on all labelled campus scenarios.\n"
-                "Uses Ollama by default (real LLM). This can take many minutes on CPU."
+                "Pick ollama (local), openai, or gemini. Ollama can take many minutes on CPU."
             ),
             justify="left",
         )
@@ -701,6 +701,8 @@ class CampusRCAGUI(tk.Tk):
             settings = self._settings(backend, offline, model)
             if settings.llm_backend == "openai" and not settings.openai_api_key:
                 raise RuntimeError("OPENAI_API_KEY missing in environment / .env")
+            if settings.llm_backend == "gemini" and not settings.gemini_api_key:
+                raise RuntimeError("GEMINI_API_KEY missing in environment / .env")
             sc = next(s for s in load_scenarios()["scenarios"] if s["id"] == sid)
             pipe = RCAPipeline(settings)
             progress(f"Running {mode} pipeline (rules / LLM as needed)…")
@@ -797,6 +799,8 @@ class CampusRCAGUI(tk.Tk):
             settings = self._settings(backend, offline, self.model_var.get().strip())
             if settings.llm_backend == "openai" and not settings.openai_api_key:
                 raise RuntimeError("OPENAI_API_KEY missing")
+            if settings.llm_backend == "gemini" and not settings.gemini_api_key:
+                raise RuntimeError("GEMINI_API_KEY missing in environment / .env")
             pipe = RCAPipeline(settings)
             data = load_scenarios()
             scenarios = data["scenarios"]
@@ -816,6 +820,12 @@ class CampusRCAGUI(tk.Tk):
                             f"[{mark}] {mode:10} {scenario['id']:24} "
                             f"-> {result.final_fault_type}@{result.final_device}"
                         )
+                        if (
+                            mode == "llm_only"
+                            and not row["localisation_correct"]
+                            and result.final_explanation
+                        ):
+                            line += f"  ({result.final_explanation[:90]})"
                     except Exception as exc:  # noqa: BLE001
                         row = {
                             "scenario_id": scenario["id"],
