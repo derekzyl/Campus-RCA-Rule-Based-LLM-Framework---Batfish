@@ -221,8 +221,8 @@ def build_hybrid_user_prompt(symptom: str, evidence_json: str, rule_json: str) -
 Symptom: {symptom}
 Validated rule diagnosis (authoritative for fault_type and device): {rule_json}
 Evidence: {evidence_json}
-Explain that diagnosis briefly. JSON only. Do not contradict the rule fault_type/device.
-Put fault_type and device first."""
+Explain that diagnosis briefly. Include at least one advisory remediation step (human approval required; do not apply config).
+JSON only. Do not contradict the rule fault_type/device."""
 
 
 def build_llm_only_user_prompt(symptom: str, evidence: EvidenceBundle | str) -> str:
