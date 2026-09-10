@@ -8135,22 +8135,34 @@
     "unmatched_evidence": []
   },
   "llm_diagnosis": {
-    "root_cause": "",
+    "root_cause": "acl_deny on core_sw1",
     "fault_type": "acl_deny",
     "device": "core_sw1",
-    "confidence": 0.5,
-    "explanation": "Student PC 192.168.30.21 cannot reach management host 192.168.10.51 due to a deny on VLAN 30 in both core_sw1 and core_sw2.",
-    "evidence_used": [],
-    "remediation": [],
-    "uncertainties": [],
-    "raw_text": "{\n  \"explanation\": \"Student PC 192.168.30.21 cannot reach management host 192.168.10.51 due to a deny on VLAN 30 in both core_sw1 and core_sw2.\",\n  \"fault_type\": \"acl_deny\",\n  \"device\": \"core_sw1\"\n}",
+    "confidence": 0.6,
+    "explanation": "STUDENT-FILTER (VLAN 30 in, both cores) denies student 192.168.30.0/24 to management 192.168.10.0/24.",
+    "evidence_used": [
+      "cues"
+    ],
+    "remediation": [
+      "Review ACL STUDENT-FILTER inbound on core_sw1 (do not apply changes without approval).",
+      "Confirm the deny ACE matches the probe 5-tuple, then verify with show access-lists / testFilters.",
+      "Compare against the baseline snapshot before any policy edit."
+    ],
+    "uncertainties": [
+      "Salvaged from truncated LLM JSON"
+    ],
+    "raw_text": "{\n  \"primary\": {\n    \"rule_id\": \"R1_ACL_DENY\",\n    \"fault_type\": \"acl_deny\",\n    \"confidence\": 0.94,\n    \"device\": \"core_sw1\",\n    \"object\": \"STUDENT-FILTER\",\n    \"layer\": \"policy\",\n    \"rationale\": \"STUDENT-FILTER (VLAN 30 in, both cores) denies student 192.168.30.0/24 to management 192.168.10.0/24.\",\n    \"evidence_refs\": [\n      \"acl_trace\",\n      \"reachability\",\n      \"campus_policy\"\n    ]\n  },\n  \"candidates\": [\n    {\n      \"rule_id\": \"R1_ACL_DENY\",\n      \"fault_type\": \"acl_deny\",\n      \"confidence\": 0.94,\n      \"device\": \"core_sw1\",\n      \"object\": \"STUDENT-FILTER\",\n      \"layer\": \"policy\",\n      \"rationale\": \"STUDENT-FILTER (VLAN 30 in, both cores) denies student 192.168.30.0/24 to management 192.168.10.0/24.\",\n      \"evidence_refs\": [\n        \"acl_trace\",\n        \"reachability\",\n        \"campus_policy\"\n      ]\n    }\n  ]\n}",
     "hallucinated_claims": []
   },
   "final_fault_type": "acl_deny",
   "final_device": "core_sw1",
-  "final_explanation": "Student PC 192.168.30.21 cannot reach management host 192.168.10.51 due to a deny on VLAN 30 in both core_sw1 and core_sw2.",
-  "remediation": [],
-  "elapsed_ms": 65332.10725800018,
+  "final_explanation": "STUDENT-FILTER (VLAN 30 in, both cores) denies student 192.168.30.0/24 to management 192.168.10.0/24.",
+  "remediation": [
+    "Review ACL STUDENT-FILTER inbound on core_sw1 (do not apply changes without approval).",
+    "Confirm the deny ACE matches the probe 5-tuple, then verify with show access-lists / testFilters.",
+    "Compare against the baseline snapshot before any policy edit."
+  ],
+  "elapsed_ms": 83442.00012199872,
   "notes": [
     "Hybrid: rules decide fault class; LLM explains using validated evidence only",
     "evidence_source=batfish"
